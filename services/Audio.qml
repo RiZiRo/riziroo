@@ -69,6 +69,22 @@ Singleton {
         Audio.sink.audio.volume -= step;
     }
 
+    /**
+     * One notch's worth of volume, clamped to 0..1. `steps` is signed, so -1 is one notch down.
+     *
+     * incrementVolume/decrementVolume are left exactly as they are -- the media keys and the screen
+     * corners call them -- but decrementVolume walks the sink straight past zero, and a sink sitting
+     * at a negative volume reads as a negative percentage in the OSD. Anything driven by raw pointer
+     * input goes through here instead.
+     */
+    function stepVolume(steps) {
+        if (!root.sink?.audio)
+            return;
+        const current = root.sink.audio.volume;
+        const step = current < 0.1 ? 0.01 : 0.02;
+        root.sink.audio.volume = Math.max(0, Math.min(1, current + steps * step));
+    }
+
     function setDefaultSink(node) {
         Pipewire.preferredDefaultAudioSink = node;
     }

@@ -16,6 +16,10 @@ Item {
     implicitWidth:  vertical ? Appearance.sizes.verticalBarWidth : (resourceRowLayout.x < 0 ? 0 : resourceRowLayout.implicitWidth)
     implicitHeight: vertical ? resourceProgress.implicitHeight : Appearance.sizes.barHeight
     property bool warning: percentage * 100 >= warningThreshold
+    property color contentColor: Appearance.colors.colOnSecondaryContainer
+    // Keep the error hue but drag its lightness to whichever side reads on this backdrop.
+    readonly property color warningColor: ColorUtils.colorWithLightness(Appearance.colors.colError,
+        ColorUtils.isDark(root.contentColor) ? 0.34 : 0.76)
 
     Component {
         id: outlineStyle
@@ -23,7 +27,7 @@ Item {
             lineWidth: Appearance.rounding.unsharpen
             value: root.percentage
             implicitSize: vertical ? 20 : 20
-            colPrimary: root.warning ? Appearance.colors.colError : Appearance.colors.colOnSecondaryContainer
+            colPrimary: root.warning ? root.warningColor : root.contentColor
             enableAnimation: false
             Item {
                 anchors.centerIn: parent
@@ -35,7 +39,7 @@ Item {
                     fill: 1
                     text: root.iconName
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.colors.colOnSecondaryContainer
+                    color: root.contentColor
                 }
             }
         }
@@ -47,7 +51,7 @@ Item {
             lineWidth: Appearance.rounding.unsharpen
             value: root.percentage
             implicitSize: 20
-            colPrimary: root.warning ? Appearance.colors.colError : Appearance.colors.colOnSecondaryContainer
+            colPrimary: root.warning ? root.warningColor : root.contentColor
             accountForLightBleeding: !root.warning
             enableAnimation: false
             Item {
@@ -60,7 +64,7 @@ Item {
                     fill: 1
                     text: root.iconName
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.m3colors.m3onSecondaryContainer
+                    color: root.contentColor
                 }
             }
         }
@@ -103,7 +107,7 @@ Item {
             StyledText {
                 id: percentageText
                 anchors.centerIn: parent
-                color: Appearance.colors.colOnLayer1
+                color: root.contentColor
                 font.pixelSize: Appearance.font.pixelSize.small
                 text: `${Math.round(root.percentage * 100).toString()}`
             }

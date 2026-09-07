@@ -58,6 +58,13 @@ Item {
             }
         },
         {
+            name: "cwd",
+            description: Translation.tr("Set the working directory that file tools and commands run in."),
+            execute: args => {
+                Ai.setWorkingDirectory(args.join(" "));
+            }
+        },
+        {
             name: "tool",
             description: Translation.tr("Set the tool to use for the model."),
             execute: args => {
@@ -758,6 +765,14 @@ Inline w/ backslash and round brackets \\(e^{i\\pi} + 1 = 0\\)
                     icon: "service_toolbox"
                     text: Ai.currentTool.charAt(0).toUpperCase() + Ai.currentTool.slice(1)
                     tooltipText: Translation.tr("Current tool: %1\nSet it with %2tool TOOL").arg(Ai.currentTool).arg(root.commandPrefix)
+                }
+
+                ApiInputBoxIndicator {
+                    // Working directory indicator
+                    visible: Ai.currentTool === "functions"
+                    icon: "folder_open"
+                    text: FileUtils.fileNameForPath(Ai.workingDirectory) || Ai.workingDirectory
+                    tooltipText: Translation.tr("Working directory: %1\nSet it with %2cwd PATH").arg(Ai.workingDirectory).arg(root.commandPrefix)
                 }
 
                 Item {

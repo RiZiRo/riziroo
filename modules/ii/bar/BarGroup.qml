@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
 
@@ -19,6 +20,30 @@ Item {
     }
 
     readonly property bool isSegmented: Config.options?.bar.borderless === "segmented"
+
+    // What the group actually paints behind its widgets, before the color animation.
+    readonly property color effectiveBgColor: (root.isMaterial && !root.paintMaterialPill)
+        ? "transparent"
+        : (root.isMaterial && root.paintMaterialPill)
+            ? root.bgColor
+            : (Config.options?.bar.borderless === "transparent"
+                ? "transparent"
+                : Config.options.bar.cornerStyle === 2 || (Config.options?.bar.borderless === "segmented" && !Config.options.bar.showBackground)
+                    ? Appearance.colors.colLayer0
+                    : root.resolvedGroupColor)
+
+    // Bar widgets are written for a dark backdrop, but a palette is free to hand out a light
+    // container role for the pill — scheme-monochrome does exactly that in dark mode, where
+    // primaryContainer lands on tone 85 — and light-on-light is unreadable. Pick the side of
+    // the palette that contrasts with whatever the group ended up painting.
+    readonly property color contentColor: {
+        if (root.effectiveBgColor.a < 0.1) return Appearance.colors.colOnLayer0;
+        const surface = Appearance.m3colors.m3surface;
+        const onSurface = Appearance.m3colors.m3onSurface;
+        const lightSide = ColorUtils.isDark(onSurface) ? surface : onSurface;
+        const darkSide = ColorUtils.isDark(onSurface) ? onSurface : surface;
+        return ColorUtils.isDark(root.effectiveBgColor) ? lightSide : darkSide;
+    }
 
     readonly property real fullRadius: height / 2
     readonly property real midRadius: root.isSegmented ? 0 : (Config.options.bar.cornerStyle === 2 ? Appearance.rounding.unsharpenmore + 2 : Appearance.rounding.unsharpenmore)
@@ -47,15 +72,7 @@ Item {
             leftMargin: root.vertical ? 4 : 0
             rightMargin: root.vertical ? 4 : 0
         }
-        color: (root.isMaterial && !root.paintMaterialPill)
-            ? "transparent"
-            : (root.isMaterial && root.paintMaterialPill)
-                ? root.bgColor
-                : (Config.options?.bar.borderless === "transparent"
-                    ? "transparent"
-                    : Config.options.bar.cornerStyle === 2 || (Config.options?.bar.borderless === "segmented" && !Config.options.bar.showBackground)
-                        ? Appearance.colors.colLayer0
-                        : root.resolvedGroupColor)
+        color: root.effectiveBgColor
 
         border.width: root.isSegmented ? 1 : 0
         border.color: Appearance.colors.colLayer0Border

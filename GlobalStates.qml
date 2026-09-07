@@ -17,6 +17,10 @@ Singleton {
     property bool osdBrightnessOpen: false
     property bool settingsOpen: false
     property bool osdVolumeOpen: false
+    // Which OSD indicator the current osdVolumeOpen burst refers to: "volume" | "brightness" | "gamma".
+    // Lives here rather than inside OnScreenDisplay so the dynamic island can render the same
+    // burst in the bar when Config.options.bar.island.absorbOsd is set.
+    property string osdIndicator: "volume"
     property bool oskOpen: false
     property bool overlayOpen: false
     property bool overviewOpen: false

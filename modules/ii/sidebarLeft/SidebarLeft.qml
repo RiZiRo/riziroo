@@ -49,7 +49,8 @@ Scope { // Scope
         }
         stdout: StdioCollector {
             onStreamFinished: {
-                pinWithFunnyHyprlandWorkaroundProc.hook(text);
+                if (typeof pinWithFunnyHyprlandWorkaroundProc.hook === "function")
+                    pinWithFunnyHyprlandWorkaroundProc.hook(text);
             }
         }
     }

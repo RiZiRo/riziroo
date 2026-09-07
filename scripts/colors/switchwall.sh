@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-QUICKSHELL_CONFIG_NAME="ii"
+QUICKSHELL_CONFIG_NAME="end4-pC"
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -375,6 +375,7 @@ main() {
     colors_lock_flag=""
     explicit_image=""
     start_dir_flag=""
+    explicit_color=""
 
     get_type_from_config() {
         jq -r '.appearance.palette.type' "$SHELL_CONFIG_FILE" 2>/dev/null || echo "auto"
@@ -405,6 +406,7 @@ main() {
                 shift 2
                 ;;
             --color)
+                explicit_color="1"
                 if [[ "$2" =~ ^#?[A-Fa-f0-9]{6}$ ]]; then
                     set_accent_color "$2"
                     shift 2
@@ -478,7 +480,9 @@ main() {
     fi
 
     # Only prompt for wallpaper if not using --color and not using --noswitch and no imgpath set
-    if [[ -z "$imgpath" && -z "$color_flag" && -z "$noswitch_flag" ]]; then
+    # NOTE: use $explicit_color, not $color_flag -- the latter is also set from the persisted
+    # accentColor in config.json, which would suppress the picker entirely.
+    if [[ -z "$imgpath" && -z "$explicit_color" && -z "$noswitch_flag" ]]; then
         if [[ -n "$start_dir_flag" && -d "$start_dir_flag" ]]; then
             cd "$start_dir_flag" || return 1
         else

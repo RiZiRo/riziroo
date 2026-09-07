@@ -33,7 +33,8 @@ Item {
 
     readonly property string cleanedTitle: StringUtils.cleanMusicTitle(activePlayer?.trackTitle) || Translation.tr("No media")
 
-    property var    artUrl:      activePlayer?.trackArtUrl ?? ""
+    // The best art this player has offered for this track, not merely the latest one it published
+    property var    artUrl:      MediaArt.urlFor(activePlayer)
     property string trackTitle:  activePlayer?.trackTitle  ?? ""
     property string trackArtist: activePlayer?.trackArtist ?? ""
     property bool   isPlaying:   activePlayer?.isPlaying   ?? false
@@ -97,7 +98,7 @@ Item {
         acceptedButtons: Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton | Qt.RightButton | Qt.LeftButton
         hoverEnabled: !Config.options.bar.tooltips.clickToShow
         onPressed: (event) => {
-            if (event.button === Qt.MiddleButton)      activePlayer?.togglePlaying()
+            if (event.button === Qt.MiddleButton)      MprisController.togglePlayer(activePlayer)
             else if (event.button === Qt.BackButton)   activePlayer?.previous()
             else if (event.button === Qt.ForwardButton || event.button === Qt.RightButton) activePlayer?.next()
             else if (event.button === Qt.LeftButton)   GlobalStates.mediaControlsOpen = !GlobalStates.mediaControlsOpen
@@ -113,7 +114,7 @@ Item {
         sourceComponent: ClippedFilledCircularProgress {
             implicitSize: 20
             lineWidth: Appearance.rounding.unsharpen
-            value: root.activePlayer?.position / root.activePlayer?.length
+            value: MediaUtils.trackProgress(root.activePlayer)
             colPrimary: Appearance.colors.colOnSecondaryContainer
             enableAnimation: false
             Item {
@@ -162,7 +163,7 @@ Item {
                 Layout.leftMargin: 3
                 implicitSize: 20
                 lineWidth: Appearance.rounding.unsharpen
-                value: root.activePlayer?.position / root.activePlayer?.length
+                value: MediaUtils.trackProgress(root.activePlayer)
                 colPrimary: Appearance.colors.colOnSecondaryContainer
                 enableAnimation: false
                 Item {
@@ -374,7 +375,7 @@ Item {
                         colBackground: root.isPlaying ? Appearance.colors.colPrimary : Appearance.colors.colSurfaceContainerLow
                         colBackgroundHover: root.isPlaying ? Appearance.colors.colPrimaryHover : Appearance.colors.colPrimaryContainerHover
                         colRipple: root.isPlaying ? Appearance.colors.colPrimaryActive : Appearance.colors.colPrimaryContainerActive
-                        downAction: () => root.activePlayer?.togglePlaying()
+                        downAction: () => MprisController.togglePlayer(root.activePlayer)
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter

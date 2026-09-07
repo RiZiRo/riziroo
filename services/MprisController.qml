@@ -116,7 +116,32 @@ Singleton {
 	property bool isPlaying: this.activePlayer && this.activePlayer.isPlaying;
 	property bool canTogglePlaying: this.activePlayer?.canTogglePlaying ?? false;
 	function togglePlaying() {
-		if (this.canTogglePlaying) this.activePlayer.togglePlaying();
+		this.togglePlayer(this.activePlayer);
+	}
+
+	// Firefox-family players (Zen included) publish MPRIS services whose granular
+	// Play and Pause methods are silently ignored -- only the combined PlayPause
+	// method ever reaches the media. Quickshell's MprisPlayer.togglePlaying() sends
+	// the granular methods, so shell toggles were no-ops on YouTube and other
+	// browser media. Those players are routed through busctl, which speaks the
+	// method they honour; every other player keeps the in-process call.
+	function togglePlayer(player: MprisPlayer): void {
+		if (!(player?.canTogglePlaying ?? false))
+			return;
+		if (player.dbusName?.startsWith("org.mpris.MediaPlayer2.firefox")) {
+			firefoxPlayPause.busName = player.dbusName;
+			firefoxPlayPause.running = false;
+			firefoxPlayPause.running = true;
+		} else {
+			player.togglePlaying();
+		}
+	}
+
+	Process {
+		id: firefoxPlayPause
+		property string busName: ""
+		command: ["busctl", "--user", "call", firefoxPlayPause.busName,
+			"/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "PlayPause"]
 	}
 
 	property bool canGoPrevious: this.activePlayer?.canGoPrevious ?? false;

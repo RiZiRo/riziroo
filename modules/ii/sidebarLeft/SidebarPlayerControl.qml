@@ -16,7 +16,8 @@ import Quickshell.Services.Mpris
 Item {
     id: root
     property var player: Mpris.players.values[playerSelector.currentIndex] ?? Mpris.players.values[0]
-    property var artUrl: player?.trackArtUrl ?? ""
+    // The best art this player has offered for this track, not merely the latest one it published
+    property var artUrl: MediaArt.urlFor(player)
     property string artDownloadLocation: Directories.coverArt
     property string artFileName: Qt.md5(artUrl)
     property string artFilePath: `${artDownloadLocation}/${artFileName}`
@@ -33,7 +34,11 @@ Item {
     property int visualizerSmoothing: 2
     property real radius
 
-    property string displayedArtFilePath: root.downloaded ? Qt.resolvedUrl(artFilePath) : ""
+    property string displayedArtFilePath: {
+        // Already a local snapshot, so there is nothing left to fetch
+        if (root.artUrl && root.artUrl.startsWith("file://")) return root.artUrl
+        return root.downloaded ? Qt.resolvedUrl(artFilePath) : ""
+    }
 
     Timer {
         running: root.player?.playbackState == MprisPlaybackState.Playing
@@ -45,6 +50,13 @@ Item {
     onArtFilePathChanged: {
         if (!root.artUrl || root.artUrl.length == 0) {
             root.artDominantColor = Appearance.m3colors.m3secondaryContainer
+            // Without this the last track's flag stays set and the art path becomes the md5 of an
+            // empty string, which is a file that never exists
+            root.downloaded = false
+            return
+        }
+        if (root.artUrl.startsWith("file://")) {
+            root.downloaded = true
             return
         }
         coverArtDownloader.targetFile = root.artUrl
@@ -117,11 +129,27 @@ Item {
 
                 MaterialSymbol {
                     visible: MprisController.activePlayer === null
-                    anchors.centerIn: parent 
+                    anchors.centerIn: parent
                     fill: 1
                     text: "music_note"
                     color: Appearance.colors.colPrimary
                     iconSize: Appearance.font.pixelSize.hugeass + 100
+                }
+
+                // The cover doubles as the switch between the lyric views: karaoke sweep, line by
+                // line, then the plain text of the song
+                MouseArea {
+                    id: artClickArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: LyricsService.cycleMode()
+
+                    StyledToolTip {
+                        extraVisibleCondition: false
+                        alternativeVisibleCondition: artClickArea.containsMouse
+                        text: LyricsService.modeDescription
+                    }
                 }
             }
 
@@ -191,6 +219,7 @@ Item {
                 opacity: MprisController.activePlayer !== null ? 1 : 0 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                player: root.player
                 textAlignment: Text.AlignHCenter
                 textColor: blendedColors.colOnLayer0
                 activeColor: blendedColors.colPrimary
@@ -217,7 +246,7 @@ Item {
                     color: blendedColors.colSubtext
                     font.letterSpacing: -0.4
                     font.features: { "tnum": 1 }
-                    text: StringUtils.friendlyTimeForSeconds(root.player?.position ?? 0)
+                    text: StringUtils.friendlyTimeForSeconds(sliderLoader.item?.displayPosition ?? MediaUtils.trackPosition(root.player))
                 }
 
                 Item {
@@ -227,16 +256,13 @@ Item {
                     Loader {
                         id: sliderLoader
                         anchors.fill: parent
-                        active: root.player?.canSeek ?? false  
-                        sourceComponent: StyledSlider {
-                            configuration: StyledSlider.Configuration.Wavy
+                        active: MediaUtils.canSeekTo(root.player)
+                        sourceComponent: MediaProgressSlider {
+                            player: root.player
                             highlightColor: blendedColors.colPrimary
                             trackColor: blendedColors.colSecondaryContainer
                             handleColor: blendedColors.colPrimary
-                            value: (root.player?.position ?? 0) / (root.player?.length ?? 1)
-                            onMoved: {root.player.position = value * root.player.length
-                                lyricsComp.restartLyrics()
-                            }
+                            onSeeked: lyricsComp.syncNow()
                         }
                     }
 
@@ -247,12 +273,13 @@ Item {
                             left: parent.left
                             right: parent.right
                         }
-                        active: !(root.player?.canSeek ?? false)  
+                        active: !MediaUtils.canSeekTo(root.player)
                         sourceComponent: StyledProgressBar {
-                            wavy: root.player?.isPlaying ?? false  
+                            wavy: root.player?.isPlaying ?? false
+                            indeterminate: !MediaUtils.hasTrackLength(root.player)
                             highlightColor: blendedColors.colPrimary
                             trackColor: blendedColors.colSecondaryContainer
-                            value: (root.player?.position ?? 0) / (root.player?.length ?? 1)
+                            value: MediaUtils.trackProgress(root.player)
                         }
                     }
                 }
@@ -262,7 +289,7 @@ Item {
                     color: blendedColors.colSubtext
                     font.letterSpacing: -0.4
                     font.features: { "tnum": 1 }
-                    text: StringUtils.friendlyTimeForSeconds(root.player?.length ?? 0)
+                    text: MediaUtils.friendlyTrackLength(root.player)
                 }
             }
 
@@ -299,7 +326,7 @@ Item {
                     colBackground: (root.player?.isPlaying ?? false) ? blendedColors.colPrimary : blendedColors.colSecondaryContainer
                     colBackgroundHover: (root.player?.isPlaying ?? false) ? blendedColors.colPrimaryHover : blendedColors.colSecondaryContainerHover
                     colRipple: (root.player?.isPlaying ?? false) ? blendedColors.colPrimaryActive : blendedColors.colSecondaryContainerActive
-                    downAction: () => root.player?.togglePlaying()  
+                    downAction: () => MprisController.togglePlayer(root.player)
                     contentItem: MaterialSymbol {
                         iconSize: 50
                         fill: 1

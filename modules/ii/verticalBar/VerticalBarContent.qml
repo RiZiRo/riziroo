@@ -144,6 +144,7 @@ Item {
                     Component {
                         id: topMaterialGroupDelegate
                         Bar.BarGroup {
+                            id: topMaterialGroup
                             Layout.fillWidth: true
                             vertical: true
                             currentIndex: index
@@ -155,8 +156,10 @@ Item {
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
                                     if (item && "vertical" in item) item.vertical = true
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => topMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -173,6 +176,7 @@ Item {
                 Repeater {
                     model: root.effectiveLeftLayout
                     delegate: Bar.BarGroup {
+                        id: topGroup
                         Layout.fillWidth: true
                         vertical: true
                         currentIndex: index
@@ -182,8 +186,10 @@ Item {
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
                                 if (item && "vertical" in item) item.vertical = true
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => topGroup.contentColor)
                             }
                         }
                     }
@@ -220,6 +226,7 @@ Item {
                     Component {
                         id: centerMaterialGroupDelegate
                         Bar.BarGroup {
+                            id: centerMaterialGroup
                             Layout.fillWidth: true
                             vertical: true
                             currentIndex: index
@@ -231,8 +238,10 @@ Item {
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
                                     if (item && "vertical" in item) item.vertical = true
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => centerMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -249,6 +258,7 @@ Item {
                 Repeater {
                     model: root.effectiveMiddleLayout
                     delegate: Bar.BarGroup {
+                        id: middleGroup
                         Layout.fillWidth: true
                         vertical: true
                         currentIndex: index
@@ -258,8 +268,10 @@ Item {
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
                                 if (item && "vertical" in item) item.vertical = true
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => middleGroup.contentColor)
                             }
                         }
                     }
@@ -297,6 +309,7 @@ Item {
                     Component {
                         id: bottomMaterialGroupDelegate
                         Bar.BarGroup {
+                            id: bottomMaterialGroup
                             Layout.fillWidth: true
                             vertical: true
                             currentIndex: index
@@ -308,8 +321,10 @@ Item {
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
                                     if (item && "vertical" in item) item.vertical = true
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => bottomMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -326,6 +341,7 @@ Item {
                 Repeater {
                     model: root.effectiveRightLayout
                     delegate: Bar.BarGroup {
+                        id: bottomGroup
                         Layout.fillWidth: true
                         vertical: true
                         currentIndex: index
@@ -335,8 +351,10 @@ Item {
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
                                 if (item && "vertical" in item) item.vertical = true
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => bottomGroup.contentColor)
                             }
                         }
                     }

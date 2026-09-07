@@ -51,6 +51,25 @@ def parse_key_string(key_str: str):
             key = p
     return mods, key
 
+
+def parse_display_key(text: str):
+    """
+    Parse a cheatsheet-only display line into (mods, key).
+
+    These lines document binds that are generated in a loop, so they use the
+    old hyprland.conf spelling instead of hl.bind(...):
+      bind = SUPER + <-/^/->/v,,     -> (["SUPER"], "<-/^/->/v")
+      bind = SUPER + SHIFT, <-/->,,  -> (["SUPER", "SHIFT"], "<-/->")
+      binde = SUPER, ;/',,           -> (["SUPER"], ";/'")
+    """
+    stripped = re.sub(r'^bind[a-z]*\s*=\s*', '', text.strip()).rstrip(",").strip()
+    if "," in stripped:
+        mod_part, key_part = stripped.split(",", 1)
+        mods, _ = parse_key_string(mod_part)
+        return mods, key_part.strip().rstrip(",").strip()
+    return parse_key_string(stripped)
+
+
 def autogenerate_comment(dispatcher: str, params: str = "") -> str:
     d = dispatcher.lower()
     if "exec_cmd" in d or "exec" in d:
@@ -159,7 +178,8 @@ def get_binds_recursive(current_content: Section, scope: int) -> Section:
                 # Extract key hint from before " -- "
                 key_hint = rest.split(" -- ")[0].strip()
                 # Build a synthetic KeyBinding for display
-                kb = KeyBinding([], key_hint, "comment", "", comment_part)
+                mods, key = parse_display_key(key_hint)
+                kb = KeyBinding(mods, key, "comment", "", comment_part.replace(" -- ", " "))
                 current_content["keybinds"].append(kb)
             reading_line += 1
             continue

@@ -84,15 +84,25 @@ ApiStrategy {
     }
 
     function parseResponseLine(line, message) {
-        if (line.startsWith("[")) {
-            buffer += line.slice(1).trim();
-        } else if (line === "]") {
-            buffer += line.slice(0, -1).trim();
+        let trimmed = line.trim();
+        if (trimmed.startsWith(":")) {
+            return {};
+        }
+        if (trimmed.startsWith("data:")) {
+            trimmed = trimmed.slice(5).trim();
+            if (trimmed.length === 0) return {};
+            buffer = trimmed;
             return parseBuffer(message);
-        } else if (line.startsWith(",")) {
+        }
+        if (trimmed.startsWith("[")) {
+            buffer += trimmed.slice(1).trim();
+        } else if (trimmed === "]") {
+            buffer += trimmed.slice(0, -1).trim();
+            return parseBuffer(message);
+        } else if (trimmed.startsWith(",")) {
             return parseBuffer(message);
         } else {
-            buffer += line.trim();
+            buffer += trimmed;
         }
         return {};
     }
@@ -139,9 +149,11 @@ ApiStrategy {
             }
 
             // Normal text response
-            const responseContent = dataJson.candidates[0]?.content?.parts[0]?.text
-            message.rawContent += responseContent;
-            message.content += responseContent;
+            const responseContent = dataJson.candidates[0]?.content?.parts?.[0]?.text;
+            if (responseContent) {
+                message.rawContent += responseContent;
+                message.content += responseContent;
+            }
             
             // Handle annotations and metadata
             const annotationSources = dataJson.candidates[0]?.groundingMetadata?.groundingChunks?.map(chunk => {

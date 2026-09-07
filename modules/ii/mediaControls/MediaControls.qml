@@ -80,11 +80,15 @@ Scope {
     Process {
         id: cavaProc
         running: (GlobalStates.mediaControlsOpen ||
-            GlobalStates.sidebarRightOpen || 
+            GlobalStates.sidebarRightOpen ||
             Config.options.bar.layouts.leftLayout.includes("visualizer") ||
             Config.options.bar.layouts.middleLayout.includes("visualizer") ||
             Config.options.bar.layouts.rightLayout.includes("visualizer") ||
-            Config.options.background.widgets.visualizer.enable)
+            // Only while the island is actually drawing its level meter, so cava isn't left
+            // running for a pill that's showing the clock.
+            (IslandState.activity === "media" && Config.options.bar.island.showVisualizer) ||
+            Config.options.background.widgets.visualizer.enable
+            )
             && MprisController.activePlayer !== null
         onRunningChanged: {
             if (!cavaProc.running) {

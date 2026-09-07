@@ -22,6 +22,27 @@ DockButton {
     property var desktopEntry: DesktopEntries.heuristicLookup(appToplevel.appId)
     enabled: !isSeparator
     implicitWidth: isSeparator ? 1 : implicitHeight - topInset - bottomInset
+    hoverEnabled: true
+
+    // NOTE: previously a transparent MouseArea overlay tracked hover for the
+    // window preview. That overlay sat on top of RippleButton's own MouseArea
+    // and stole hover events, so root.hovered never became true and the
+    // Windows-like hover highlight never showed. Track hover directly on the
+    // button instead so the highlight + tooltip both work.
+    onHoveredChanged: {
+        if (hovered) {
+            if (appListRoot) {
+                appListRoot.lastHoveredButton = root
+                appListRoot.buttonHovered = true
+            }
+            if (appToplevel?.toplevels?.length > 0)
+                lastFocused = appToplevel.toplevels.length - 1
+        } else {
+            if (appListRoot && appListRoot.lastHoveredButton === root) {
+                appListRoot.buttonHovered = false
+            }
+        }
+    }
 
     Connections {
         target: DesktopEntries
@@ -41,38 +62,22 @@ DockButton {
         sourceComponent: DockSeparator {}
     }
 
-    Loader {
-        anchors.fill: parent
-        active: appToplevel.toplevels.length > 0
-        sourceComponent: MouseArea {
-            id: mouseArea
-            anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.NoButton
-            onEntered: {
-                appListRoot.lastHoveredButton = root
-                appListRoot.buttonHovered = true
-                lastFocused = appToplevel.toplevels.length - 1
-            }
-            onExited: {
-                if (appListRoot.lastHoveredButton === root) {
-                    appListRoot.buttonHovered = false
-                }
-            }
-        }
-    }
-
     onClicked: {
         if (appToplevel.toplevels.length === 0) {
-            root.desktopEntry?.execute();
+            AppLaunchFeedback.launch(root.desktopEntry);
             return;
         }
         lastFocused = (lastFocused + 1) % appToplevel.toplevels.length
         appToplevel.toplevels[lastFocused].activate()
     }
 
+    // Windows-like tooltip: show app name on hover so it's clear what will be clicked.
+    PopupToolTip {
+        text: root.desktopEntry?.name ?? root.appToplevel?.toplevels[0]?.title ?? root.appToplevel?.appId ?? ""
+    }
+
     middleClickAction: () => {
-        root.desktopEntry?.execute();
+        AppLaunchFeedback.launch(root.desktopEntry);
     }
 
     altAction: () => {

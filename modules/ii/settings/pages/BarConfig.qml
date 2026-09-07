@@ -320,6 +320,127 @@ ContentPage {
         }
 
         ContentSection {
+            icon: "blur_on"
+            shape: MaterialShape.Shape.Gem
+            title: Translation.tr("Dynamic island")
+            GroupedList {
+                ConfigSwitch {
+                    buttonIcon: "blur_on"
+                    text: Translation.tr("Enable")
+                    enabled: !Config.options.bar.vertical
+                    checked: Config.options.bar.island.enable
+                    onCheckedChanged: {
+                        Config.options.bar.island.enable = checked;
+                    }
+                }
+                NoticeBox {
+                    visible: Config.options.bar.vertical
+                    text: Translation.tr("The island needs a horizontal bar.")
+                }
+                NoticeBox {
+                    visible: !Config.options.bar.layouts.middleLayout.includes("dynamicIsland")
+                    text: Translation.tr("Add \"dynamicIsland\" to the middle layout above to show it.")
+                }
+                ConfigRow {
+                    uniform: true
+                    ConfigSwitch {
+                        buttonIcon: "keyboard_command_key"
+                        text: Translation.tr("Take over search keys")
+                        enabled: Config.options.bar.island.enable
+                        checked: Config.options.bar.island.absorbSearch
+                        onCheckedChanged: {
+                            Config.options.bar.island.absorbSearch = checked;
+                        }
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "tune"
+                        text: Translation.tr("Show volume in the pill")
+                        enabled: Config.options.bar.island.enable
+                        checked: Config.options.bar.island.absorbOsd
+                        onCheckedChanged: {
+                            Config.options.bar.island.absorbOsd = checked;
+                        }
+                    }
+                }
+                ConfigRow {
+                    uniform: true
+                    ConfigSwitch {
+                        buttonIcon: "graphic_eq"
+                        text: Translation.tr("Level meter while playing")
+                        enabled: Config.options.bar.island.enable
+                        checked: Config.options.bar.island.showVisualizer
+                        onCheckedChanged: {
+                            Config.options.bar.island.showVisualizer = checked;
+                        }
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "cloud"
+                        text: Translation.tr("Weather in the pill")
+                        enabled: Config.options.bar.island.enable && Config.options.bar.weather.enable
+                        checked: Config.options.bar.island.showWeather
+                        onCheckedChanged: {
+                            Config.options.bar.island.showWeather = checked;
+                        }
+                    }
+                }
+                ConfigRow {
+                    uniform: true
+                    ConfigSwitch {
+                        buttonIcon: "volume_up"
+                        text: Translation.tr("Scroll over the pill for volume")
+                        enabled: Config.options.bar.island.enable
+                        checked: Config.options.bar.island.scrollVolume
+                        onCheckedChanged: {
+                            Config.options.bar.island.scrollVolume = checked;
+                        }
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "swipe"
+                        text: Translation.tr("Drag the pill to skip tracks")
+                        enabled: Config.options.bar.island.enable
+                        checked: Config.options.bar.island.swipeToSkip
+                        onCheckedChanged: {
+                            Config.options.bar.island.swipeToSkip = checked;
+                        }
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "swap_horiz"
+                    text: Translation.tr("Drag right for the next track instead")
+                    enabled: Config.options.bar.island.enable && Config.options.bar.island.swipeToSkip
+                    checked: Config.options.bar.island.swipeInvert
+                    onCheckedChanged: {
+                        Config.options.bar.island.swipeInvert = checked;
+                    }
+                }
+                ConfigSpinBox {
+                    icon: "format_list_numbered"
+                    text: Translation.tr("Search results shown")
+                    enabled: Config.options.bar.island.enable
+                    value: Config.options.bar.island.maxResults
+                    from: 5
+                    to: 50
+                    stepSize: 5
+                    onValueChanged: {
+                        Config.options.bar.island.maxResults = value;
+                    }
+                }
+                ConfigSpinBox {
+                    icon: "history"
+                    text: Translation.tr("Frecency half-life (days)")
+                    enabled: Config.options.bar.island.enable
+                    value: Config.options.bar.island.frecencyHalfLifeDays
+                    from: 1
+                    to: 90
+                    stepSize: 1
+                    onValueChanged: {
+                        Config.options.bar.island.frecencyHalfLifeDays = value;
+                    }
+                }
+            }
+        }
+
+        ContentSection {
             icon: "notifications"
             shape: MaterialShape.Shape.Bun
             title: Translation.tr("Notifications")
@@ -586,10 +707,10 @@ ContentPage {
                 ConfigRow {
                     uniform: true
                     ConfigSwitch {
-                        buttonIcon: "swap_horiz"
-                        text: Translation.tr("Swap")
-                        checked: Config.options.bar.resources.alwaysShowSwap
-                        onCheckedChanged: { Config.options.bar.resources.alwaysShowSwap = checked }
+                        buttonIcon: "deployed_code"
+                        text: Translation.tr("GPU")
+                        checked: Config.options.bar.resources.alwaysShowGpu
+                        onCheckedChanged: { Config.options.bar.resources.alwaysShowGpu = checked }
                     }
                 }
                 ConfigSelectionArray {

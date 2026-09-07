@@ -356,16 +356,34 @@ Singleton {
                         property bool vertical: false
                     }
 
+                    property JsonObject amneziaVpn: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property bool compact: false
+                        // Ask AmneziaVPN's privileged helper to drop the tunnel instead of
+                        // just opening the app. Needs socat and /run/amneziavpn/daemon.socket.
+                        property bool daemonControl: true
+                        // Also connect through the helper instead of launching the app.
+                        // Untested: the request is built from field names found in the helper
+                        // binary, so enable it only if you're willing to retry on failure.
+                        property bool daemonConnect: false
+                        // Interface name globs that count as the Amnezia tunnel.
+                        // Add "tun*" if you use Amnezia's OpenVPN protocol.
+                        property string interfacePrefixes: "amn* awg*"
+                    }
+
                     property JsonObject media: JsonObject {
                         property bool enable: false
-                        property bool showControls: true
-                        property bool showLyrics: false
-                        property bool showTitles: true
-                        property string backgroundShape: "Cookie4Sided"
+                        property bool showLyrics: true
+                        property bool showVisualizer: true
                         property string placementStrategy: "free" // "free", "leastBusy", "mostBusy"
                         property real x: 800
                         property real y: 500
-                        property string sizeMode: "1x3" 
+                        // Dragged with the corner grip; the card picks its layout from these
+                        property real cardWidth: 520
+                        property real cardHeight: 330
                     }
                 }
                 property list<string> screenList: [] 
@@ -415,13 +433,13 @@ Singleton {
                 property JsonObject resources: JsonObject {
                     property string style: "filled"
                     property bool showValue: false
-                    property bool alwaysShowSwap: false
+                    property bool alwaysShowGpu: false
                     property bool alwaysShowCpu: true
                     property bool alwaysShowCpuTemp: false
                     property bool alwaysShowDisk: false
                     property bool alwaysShowRam: true
                     property int memoryWarningThreshold: 95
-                    property int swapWarningThreshold: 85
+                    property int gpuWarningThreshold: 90
                     property int cpuWarningThreshold: 90
                 }
                 property JsonObject divider: JsonObject {
@@ -480,6 +498,27 @@ Singleton {
                     property int maxWidth: 280
                     property int minWidth: 100
                 }
+                property JsonObject island: JsonObject {
+                    property bool enable: true
+                    property bool showWeather: true // Weather in the collapsed pill (also needs bar.weather.enable)
+                    property bool absorbOsd: true // Volume/brightness render in the pill instead of the corner OSD
+                    // Off by default: the island shouldn't take over Super-tap, Super+V and
+                    // Super+Period from the overview search just by existing. Turn it on to route
+                    // those three into the island instead.
+                    property bool absorbSearch: false
+                    property int collapsedMaxTitleChars: 34
+                    property int searchWidth: 520 // Expanded pill width
+                    property int panelWidth: 620 // Results/dashboard width
+                    property int maxResults: 20
+                    property bool showVisualizer: true
+                    property int frecencyHalfLifeDays: 14
+                    // Pointer gestures on the collapsed pill.
+                    property bool scrollVolume: true // Wheel over the pill is a volume dial
+                    property bool swipeToSkip: true // Drag the pill sideways to change track
+                    // Dragging left brings the next track in, the way a carousel does. Set this if
+                    // you read the queue as a strip laid out left to right instead.
+                    property bool swipeInvert: false
+                }
             }
 
             property JsonObject battery: JsonObject {
@@ -492,6 +531,24 @@ Singleton {
 
             property JsonObject calendar: JsonObject {
                 property string locale: "en-GB"
+            }
+
+            property JsonObject cheatsheet: JsonObject {
+                // Use a nerdfont to see the icons
+                // 0: 󰖳  | 1: 󰌽 | 2: 󰘳 | 3:  | 4: 󰨡
+                // 5:  | 6:  | 7: 󰣇 | 8:  | 9: 
+                // 10:  | 11:  | 12:  | 13:  | 14: 󱄛
+                property string superKey: ""
+                property bool useMacSymbol: false
+                property bool splitButtons: false
+                property bool useMouseSymbol: false
+                property bool useFnSymbol: false
+                // Scales the whole keybind list: fonts, key caps and spacing.
+                property real scale: 1.3
+                property JsonObject fontSize: JsonObject {
+                    property int key: 12
+                    property int comment: 12
+                }
             }
 
             property JsonObject conflictKiller: JsonObject {
@@ -545,6 +602,16 @@ Singleton {
                 property list<string> pinnedApps: [ "org.kde.dolphin", "kitty", "cmake-gui"]
             }
 
+            property JsonObject launchFeedback: JsonObject { // Bouncing app icon at the pointer while an app starts up
+                property bool enable: true
+                property bool followCursor: true // Keep the icon glued to the pointer (Hyprland only)
+                property int followIntervalMs: 90 // How often to sample the pointer while following
+                property int timeout: 10000 // Give up waiting for the app's window after this long
+                property int slowAfter: 2500 // Show the "still working" bar once a launch takes this long
+                property int iconSize: 32
+                property int pointerGap: 30 // Distance kept clear of the cursor, so the icon isn't hidden under it
+            }
+
             property JsonObject light: JsonObject {
                 property JsonObject night: JsonObject {
                     property bool automatic: true
@@ -581,6 +648,37 @@ Singleton {
             property JsonObject media: JsonObject {
                 // Attempt to remove dupes (the aggregator playerctl one and browsers' native ones when there's plasma browser integration)
                 property bool filterDuplicatePlayers: true
+                // Multiplies the lyric line text size everywhere Lyrics.qml is used: the media
+                // controls popup, the left sidebar player, the desktop media widget and the
+                // island's Media tab.
+                property real lyricsFontScale: 1.25
+                // Nudge for lyrics that run ahead of or behind the audio, in milliseconds.
+                // Positive shows lines earlier, negative later.
+                property int lyricsOffset: 0
+                // Which of the three lyric views to draw. Clicking the cover art in a media view
+                // steps through them in this order:
+                //   "karaoke" - the line being sung is swept, word by word where the source timed it
+                //   "line"    - whole lines light up as they start, nothing moves within a line
+                //   "raw"     - the plain text of the song, no highlight and no auto scrolling
+                property string lyricsMode: "karaoke"
+                // Sweep the line being sung word by word. Only ever applied to sources that really
+                // timed the words -- enhanced LRC or Musixmatch richsync. Turning this off keeps the
+                // karaoke view from sweeping at all, leaving it the same as the line view.
+                property bool lyricsKaraoke: true
+                // What to do on the usual line-timed lyrics, which have no word timings at all.
+                // Off: the whole line simply lights up when it starts, which is honest.
+                // On: one edge crosses the line at reading pace, roughly where the eye would be.
+                // Never a per word highlight -- that would be guessing at when each word is sung.
+                property bool lyricsLineWipe: false
+                // Ask Musixmatch for word by word timings when the line-synced source has none.
+                // Costs one or two requests per new track, cached with the lyrics afterwards, and
+                // is skipped for ten minutes after any network failure.
+                property bool lyricsWordSync: true
+                // Glow behind the line being sung. Costs a shader pass per lyrics view.
+                property bool lyricsGlow: true
+                // Blur lines further from the one being sung. Also a shader pass; turn both off on
+                // weak GPUs.
+                property bool lyricsBlur: true
             }
 
             property JsonObject networking: JsonObject {
@@ -674,10 +772,27 @@ Singleton {
                     property string clipboard: ";"
                     property string emojis: ":"
                     property string keybinds: "<"
-                    property string symbols: "."
+                    property string symbols: "#"
+                    property string ai: "."
                     property string math: "="
                     property string shellCommand: "$"
                     property string webSearch: "?"
+                    // Two letters plus a space rather than a symbol: every spare punctuation mark is
+                    // taken, and the trailing space keeps it from swallowing app names like
+                    // "Transmission".
+                    property string translate: "tr "
+                }
+                property JsonObject translate: JsonObject {
+                    // Direction is inferred per query, so one prefix covers both ways: text written
+                    // outside the Latin blocks is taken to be the foreign side and goes to
+                    // `secondary`, anything else goes to `primary`.
+                    property string primary: "fa"
+                    property string secondary: "en"
+                    // translate-shell engines, tried in order until one returns something. Bing's
+                    // scraper breaks periodically ("Failed to extract IG"), so this doesn't bet on
+                    // a single one. None need an API key.
+                    property list<string> engines: ["google", "bing", "yandex"]
+                    property int delay: 350 // Debounce before hitting the network, milliseconds
                 }
                 property JsonObject imageSearch: JsonObject {
                     property string imageSearchEngineBaseUrl: "https://lens.google.com/uploadbyurl?url="

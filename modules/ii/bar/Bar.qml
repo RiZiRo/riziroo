@@ -9,6 +9,7 @@ import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.ii.island
 
 Scope {
     id: bar
@@ -52,16 +53,33 @@ Scope {
                 }
                 property bool superShow: false
                 property bool mustShow: hoverRegion.containsMouse || superShow
+                // The island's expanded surface lives in this window (see IslandSurface.qml), and
+                // only on the bar the user is actually looking at -- IslandState is global, so
+                // without this every monitor would grow a copy.
+                readonly property bool isFocusedMonitor: (barRoot.screen?.name ?? "") === (Hyprland.focusedMonitor?.name ?? "")
+                readonly property bool islandExpanded: IslandState.expanded && barRoot.isFocusedMonitor
+                readonly property real islandSurfaceHeight: islandSurfaceLoader.item?.implicitHeight ?? 0
+                readonly property real islandGap: 6
                 property var thisMonitorData: HyprlandData.monitors.find(m => m.name === barRoot.screen?.name)
                 property bool monitorHasFullscreen: HyprlandData.workspaceById[thisMonitorData?.activeWorkspace?.id]?.hasfullscreen ?? false
                 property bool monitorHasSpecialOpen: (thisMonitorData?.specialWorkspace?.name ?? "") !== ""
                 exclusionMode: ExclusionMode.Ignore
                 exclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows)) ? 0 : Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0) + (Config.options.bar.cornerStyle === 2 ? -6 : 0)
                 WlrLayershell.namespace: "quickshell:bar"
+                // The island's field and now its whole surface live in this window, so the bar has
+                // to hold keyboard focus while it is open. Exclusive rather than OnDemand: under
+                // Hyprland OnDemand only hands focus over on a click, and Super-tap opens the
+                // island without one. Covers the dashboard too, so Escape and the to-do list's
+                // text field both work.
+                WlrLayershell.keyboardFocus: barRoot.islandExpanded ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
                 // Overlay layer only while special workspace sits on top of a fullscreen window on this monitor,
                 // else Top layer so fullscreen apps cover the bar as normal (Hyprland buries Top layer under fullscreen+special).
                 WlrLayershell.layer: (monitorHasFullscreen && monitorHasSpecialOpen) ? WlrLayer.Overlay : WlrLayer.Top
-                implicitHeight: Appearance.sizes.barHeight + Appearance.rounding.screenRounding
+                // Fullscreen while the island is expanded. Visually nothing changes -- the window
+                // is transparent outside the bar -- but the input mask (bound to hoverMaskRegion,
+                // which then fills this window) can cover empty screen, so clicks outside the pill
+                // and its surface reach islandDismissArea instead of falling to clients.
+                implicitHeight: barRoot.islandExpanded ? (barRoot.screen?.height ?? 800) : Appearance.sizes.barHeight + Appearance.rounding.screenRounding
                 // When Overlay-layer, bar shares a layer with the screen-corner click zones (ScreenCorners.qml)
                 // and same-layer overlap is resolved by stacking, not layer priority - bar was winning and
                 // swallowing the tiny corner-open hit rects. Carve them out of the bar's own mask so clicks
@@ -110,6 +128,19 @@ Scope {
                     GlobalFocusGrab.removePersistent(barRoot);
                 }
 
+                // NO GlobalFocusGrab registration for the island, deliberately. Registering this
+                // window as a dismissable while it holds exclusive keyboard focus makes the grab
+                // clear the instant it engages, which fires `dismissed` and closes the island
+                // inside a frame -- the island then appears not to open at all. That happened with a
+                // separate dismissable window in step 5, and again here when the bar itself was
+                // registered. Twice is enough.
+                //
+                // Click-outside dismissal is instead done with geometry, not a grab: while expanded
+                // this window goes fullscreen (transparent) and islandDismissArea below catches
+                // presses landing outside the pill and its surface.
+                //
+                // Other ways to close: Escape, the pill, the keybind, or picking a result.
+
                 MouseArea  {
                     id: hoverRegion
                     hoverEnabled: true
@@ -122,10 +153,48 @@ Scope {
                     Item {
                         id: hoverMaskRegion
                         anchors {
-                            fill: barContent
-                            topMargin: -Config.options.bar.autoHide.hoverRegionWidth
-                            bottomMargin: -Config.options.bar.autoHide.hoverRegionWidth
+                            // While the island is expanded the mask item is the whole (fullscreen)
+                            // window, so clicks landing on empty screen reach this window and hit
+                            // islandDismissArea below. Collapsed, it is just the bar plus the hover
+                            // strip, exactly as before.
+                            fill: barRoot.islandExpanded ? hoverRegion : barContent
+                            topMargin: barRoot.islandExpanded ? 0 : -Config.options.bar.autoHide.hoverRegionWidth - ((barRoot.islandExpanded && Config.options.bar.bottom) ? barRoot.islandSurfaceHeight + barRoot.islandGap * 2 : 0)
+                            // Extended over the island surface so the mask -- which is bound to
+                            // this Item -- covers it. Growing an already-working anchored Item was
+                            // chosen over adding another Region to the mask, since Region geometry
+                            // is exactly what failed twice in the standalone window.
+                            bottomMargin: barRoot.islandExpanded ? 0 : -Config.options.bar.autoHide.hoverRegionWidth - ((barRoot.islandExpanded && !Config.options.bar.bottom) ? barRoot.islandSurfaceHeight + barRoot.islandGap * 2 : 0)
                         }
+                    }
+
+                    // Click-outside-to-close for the expanded island. Declared before the surface
+                    // and the bar content so it sits *under* them: pill, search field, chips and
+                    // results all get their presses first, and only a press landing on empty
+                    // screen reaches here. Enabled only while expanded, so collapsed behavior --
+                    // and every pixel of it -- is untouched. Any button dismisses.
+                    MouseArea {
+                        id: islandDismissArea
+                        anchors.fill: hoverMaskRegion
+                        enabled: barRoot.islandExpanded
+                        acceptedButtons: Qt.AllButtons
+                        onPressed: event => {
+                            IslandState.close();
+                            event.accepted = true;
+                        }
+                    }
+
+                    Loader {
+                        id: islandSurfaceLoader
+                        active: barRoot.islandExpanded
+                        visible: active
+                        anchors {
+                            horizontalCenter: parent.horizontalCenter
+                            top: Config.options.bar.bottom ? undefined : barContent.bottom
+                            bottom: Config.options.bar.bottom ? barContent.top : undefined
+                            topMargin: barRoot.islandGap
+                            bottomMargin: barRoot.islandGap
+                        }
+                        sourceComponent: IslandSurface {}
                     }
 
                     RoundCorner {

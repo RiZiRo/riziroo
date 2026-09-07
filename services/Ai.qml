@@ -23,6 +23,7 @@ Singleton {
     property Component geminiApiStrategy: GeminiApiStrategy {}
     property Component openaiApiStrategy: OpenAiApiStrategy {}
     property Component mistralApiStrategy: MistralApiStrategy {}
+    property Component claudeApiStrategy: ClaudeApiStrategy {}
     readonly property string interfaceRole: "interface"
     readonly property string apiKeyEnvVarName: "API_KEY"
 
@@ -35,8 +36,27 @@ Singleton {
             // QML/JS doesn't support replaceAll, so use split/join
             prompt = prompt.split(key).join(root.promptSubstitutions[key]);
         }
+        if (root.currentTool === "functions") prompt += root.toolInstructions;
         return prompt;
     }
+
+    /**
+     * Appended to whatever system prompt is loaded, so the file tools behave
+     * sanely even with a persona prompt that knows nothing about them.
+     */
+    readonly property string toolInstructions: `
+
+## Tools (you have real filesystem access)
+
+Working directory: \`${root.workingDirectory}\` — relative paths resolve against it.
+
+- Read a file before claiming anything about it, and again immediately before editing it.
+- Use \`search_files\` to find where something is defined and \`glob_files\` to find a file by name. Don't guess paths.
+- Prefer \`edit_file\` over \`write_file\` for existing files. Copy \`old_string\` exactly as \`read_file\` showed it, including indentation, with enough context to appear only once.
+- \`write_file\`, \`edit_file\` and \`run_shell_command\` ask the user to approve first. Say what you're about to do, make the call, then wait.
+- If a call fails, read the error and fix the cause rather than retrying it unchanged. If the user rejects a call, don't retry it.
+- After changing code, verify: re-read the edited region or run the project's build/test command. Report failures honestly with the output.
+`
     // property var messages: []
     property var messageIDs: []
     property var messageByID: ({})
@@ -57,6 +77,40 @@ Singleton {
         property int total: -1
     }
 
+    /**
+     * The keyring loads asynchronously, and its contents can change while the
+     * shell runs. Sending before the key is in hand puts an empty token on the
+     * wire, which every provider answers with a confusing auth error, so a
+     * request that needs a key it doesn't have waits for exactly one fetch.
+     */
+    property bool awaitingKey: false
+
+    function ensureKeyForRequest(model): bool {
+        if (!model?.requires_key) return true;
+        if ((root.apiKeys[model.key_id]?.length ?? 0) > 0) {
+            root.awaitingKey = false;
+            return true;
+        }
+        if (root.awaitingKey) { // Fetch came back and the key still isn't there
+            root.awaitingKey = false;
+            root.addApiKeyAdvice(model);
+            return false;
+        }
+        root.awaitingKey = true;
+        KeyringStorage.fetchKeyringData();
+        return false;
+    }
+
+    function resumeRequestWaitingForKey() {
+        if (!root.awaitingKey) return;
+        requester.makeRequest(); // ensureKeyForRequest now sends or advises
+    }
+
+    Connections {
+        target: KeyringStorage
+        function onFetchFinished() { root.resumeRequestWaitingForKey(); }
+    }
+
     function idForMessage(message) {
         // Generate a unique ID using timestamp and random value
         return Date.now().toString(36) + Math.random().toString(36).substr(2, 8);
@@ -75,169 +129,228 @@ Singleton {
         "{DISTRO}": SystemInfo.distroName,
         "{DATETIME}": `${DateTime.time}, ${DateTime.collapsedCalendarFormat}`,
         "{WINDOWCLASS}": ToplevelManager.activeToplevel?.appId ?? "Unknown",
-        "{DE}": `${SystemInfo.desktopEnvironment} (${SystemInfo.windowingSystem})` 
+        "{DE}": `${SystemInfo.desktopEnvironment} (${SystemInfo.windowingSystem})`,
+        "{CWD}": root.workingDirectory
+    }
+
+    /**
+     * Directory that relative paths and shell commands resolve against.
+     * Change it with /cwd so the model can work inside a project.
+     */
+    property string workingDirectory: Persistent.states?.ai?.workingDirectory || CF.FileUtils.trimFileProtocol(Directories.home)
+
+    function setWorkingDirectory(path) {
+        const trimmed = (path ?? "").trim();
+        if (trimmed.length === 0) {
+            root.addMessage(Translation.tr("Working directory: `%1`").arg(root.workingDirectory), root.interfaceRole);
+            return;
+        }
+        workingDirectoryCheck.requestedPath = CF.FileUtils.trimFileProtocol(trimmed);
+        workingDirectoryCheck.running = true;
+    }
+
+    /** Only accept a working directory that actually exists. */
+    Process {
+        id: workingDirectoryCheck
+        property string requestedPath: ""
+        command: ["bash", "-c", `cd -- "${requestedPath}" && pwd`]
+        stdout: StdioCollector {
+            id: workingDirectoryOutput
+        }
+        onExited: (exitCode, exitStatus) => {
+            const resolved = workingDirectoryOutput.text.trim();
+            if (exitCode !== 0 || resolved.length === 0) {
+                root.addMessage(Translation.tr("Not a directory: `%1`").arg(workingDirectoryCheck.requestedPath), root.interfaceRole);
+                return;
+            }
+            root.workingDirectory = resolved;
+            if (Persistent.states?.ai) Persistent.states.ai.workingDirectory = resolved;
+            root.addMessage(Translation.tr("Working directory set to `%1`").arg(resolved), root.interfaceRole);
+        }
     }
 
     // Gemini: https://ai.google.dev/gemini-api/docs/function-calling
     // OpenAI: https://platform.openai.com/docs/guides/function-calling
     property string currentTool: Config?.options.ai.tool ?? "search"
-    property var tools: {
-        "gemini": {
-            "functions": [{"functionDeclarations": [
-                {
-                    "name": "switch_to_search_mode",
-                    "description": "Search the web",
-                },
-                {
-                    "name": "get_shell_config",
-                    "description": "Get the desktop shell config file contents",
-                },
-                {
-                    "name": "set_shell_config",
-                    "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
-                            },
-                            "value": {
-                                "type": "string",
-                                "description": "The value to set, e.g. `true`"
-                            }
-                        },
-                        "required": ["key", "value"]
+
+    /**
+     * File and search tools, in a neutral {name, description, parameters} form.
+     * Each api_format wraps these differently in `tools` below.
+     */
+    function fileToolSchemas() {
+        return [
+            {
+                "name": "read_file",
+                "description": "Read a text file from disk and get it back with line numbers. Always read a file before editing it. Paths may be absolute or relative to the working directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File to read" },
+                        "offset": { "type": "integer", "description": "1-based line to start from. Omit to read from the beginning." },
+                        "limit": { "type": "integer", "description": "Maximum number of lines to read. Omit for the default of 2000." }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "list_directory",
+                "description": "List the immediate contents of a directory. Directories are suffixed with a slash.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Directory to list. Defaults to the working directory." }
                     }
-                },
-                {
-                    "name": "run_shell_command",
-                    "description": "Run a shell command in bash and get its output. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": {
-                                "type": "string",
-                                "description": "The bash command to run",
-                            },
+                }
+            },
+            {
+                "name": "glob_files",
+                "description": "Find files by name pattern, newest first. Use this when you know roughly what a file is called but not where it lives.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": { "type": "string", "description": "Glob such as **/*.qml or Config.*" },
+                        "path": { "type": "string", "description": "Directory to search under. Defaults to the working directory." }
+                    },
+                    "required": ["pattern"]
+                }
+            },
+            {
+                "name": "search_files",
+                "description": "Search file contents by regular expression and get back matching lines as path:line:text. Use this to locate code rather than guessing where it is.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": { "type": "string", "description": "Regular expression to search for" },
+                        "path": { "type": "string", "description": "Directory to search under. Defaults to the working directory." },
+                        "glob": { "type": "string", "description": "Restrict to file names matching this glob, e.g. *.py" }
+                    },
+                    "required": ["pattern"]
+                }
+            },
+            {
+                "name": "write_file",
+                "description": "Create a new file or completely overwrite an existing one. Requires user approval. Prefer edit_file for changing part of an existing file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File to write" },
+                        "content": { "type": "string", "description": "Full contents of the file" }
+                    },
+                    "required": ["path", "content"]
+                }
+            },
+            {
+                "name": "edit_file",
+                "description": "Replace an exact string in a file. Requires user approval. Read the file first and copy old_string byte for byte, including indentation. It must appear exactly once unless replace_all is set.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File to edit" },
+                        "old_string": { "type": "string", "description": "Exact text to replace, with enough surrounding context to be unique" },
+                        "new_string": { "type": "string", "description": "Replacement text" },
+                        "replace_all": { "type": "boolean", "description": "Replace every occurrence instead of requiring a unique match" }
+                    },
+                    "required": ["path", "old_string", "new_string"]
+                }
+            }
+        ];
+    }
+
+    /** Desktop shell and command tools, same neutral form as fileToolSchemas. */
+    function shellToolSchemas() {
+        return [
+            {
+                "name": "get_shell_config",
+                "description": "Get the desktop shell config file contents",
+                "parameters": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "set_shell_config",
+                "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
                         },
-                        "required": ["command"]
-                    }
-                },
-            ]}],
-            "search": [{
-                "google_search": {}
+                        "value": {
+                            "type": "string",
+                            "description": "The value to set, e.g. `true`"
+                        }
+                    },
+                    "required": ["key", "value"]
+                }
+            },
+            {
+                "name": "run_shell_command",
+                "description": "Run a shell command in bash and get its output. Requires user approval. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The bash command to run",
+                        },
+                    },
+                    "required": ["command"]
+                }
+            }
+        ];
+    }
+
+    function agentToolSchemas() {
+        return [...root.fileToolSchemas(), ...root.shellToolSchemas()];
+    }
+
+    // Shared by every api_format that speaks the OpenAI tool schema
+    function openAiFormatTools() {
+        return {
+            "functions": root.agentToolSchemas().map(schema => ({
+                "type": "function",
+                "function": schema
+            })),
+            "search": [],
+            "none": [],
+        };
+    }
+
+    /**
+     * Gemini rejects parameter objects with no properties, so drop `parameters`
+     * entirely for tools that take no arguments.
+     */
+    function geminiFormatTools() {
+        const declarations = root.agentToolSchemas().map(schema => {
+            const takesArgs = Object.keys(schema.parameters?.properties ?? {}).length > 0;
+            return takesArgs ? schema : {
+                "name": schema.name,
+                "description": schema.description
+            };
+        });
+        return {
+            "functions": [{
+                "functionDeclarations": [
+                    {
+                        "name": "switch_to_search_mode",
+                        "description": "Search the web",
+                    },
+                    ...declarations
+                ]
             }],
+            "search": [{ "google_search": {} }],
             "none": []
-        },
-        "openai": {
-            "functions": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_shell_config",
-                        "description": "Get the desktop shell config file contents",
-                        "parameters": {}
-                    },
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "set_shell_config",
-                        "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "key": {
-                                    "type": "string",
-                                    "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "description": "The value to set, e.g. `true`"
-                                }
-                            },
-                            "required": ["key", "value"]
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "run_shell_command",
-                        "description": "Run a shell command in bash and get its output. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "command": {
-                                    "type": "string",
-                                    "description": "The bash command to run",
-                                },
-                            },
-                            "required": ["command"]
-                        }
-                    },
-                },
-            ],
-            "search": [],
-            "none": [],
-        },
-        "mistral": {
-            "functions": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_shell_config",
-                        "description": "Get the desktop shell config file contents",
-                        "parameters": {}
-                    },
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "set_shell_config",
-                        "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "key": {
-                                    "type": "string",
-                                    "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "description": "The value to set, e.g. `true`"
-                                }
-                            },
-                            "required": ["key", "value"]
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "run_shell_command",
-                        "description": "Run a shell command in bash and get its output. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "command": {
-                                    "type": "string",
-                                    "description": "The bash command to run",
-                                },
-                            },
-                            "required": ["command"]
-                        }
-                    },
-                },
-            ],
-            "search": [],
-            "none": [],
-        }
+        };
+    }
+
+    property var tools: {
+        "gemini": root.geminiFormatTools(),
+        "openai": root.openAiFormatTools(),
+        "claude": root.openAiFormatTools(),
+        "mistral": root.openAiFormatTools()
     }
     property list<var> availableTools: Object.keys(root.tools[models[currentModelId]?.api_format])
     property var toolDescriptions: {
-        "functions": Translation.tr("Commands, edit configs, search.\nTakes an extra turn to switch to search mode if that's needed"),
+        "functions": Translation.tr("Read, search and edit files, run commands, change shell config.\nWrites and commands ask for your approval first"),
         "search": Translation.tr("Gives the model search capabilities (immediately)"),
         "none": Translation.tr("Disable tools")
     }
@@ -254,6 +367,7 @@ Singleton {
     // - key_get_description: Description of pricing and how to get an API key
     // - api_format: The API format of the model. Can be "openai" or "gemini". Default is "openai".
     // - extraParams: Extra parameters to be passed to the model. This is a JSON object.
+    // - extraHeaders: Extra HTTP headers for endpoints that need more than the key. JSON object.
     property var models: Config.options.policies.ai === 2 ? {} : {
         "gemini-2.5-flash": aiModelComponent.createObject(this, {
             "name": "Gemini 2.5 Flash",
@@ -294,6 +408,167 @@ Singleton {
             "key_get_description": Translation.tr("**Instructions**: Log into Mistral account, go to Keys on the sidebar, click Create new key"),
             "api_format": "mistral",
         }),
+        "claude-opus-5": aiModelComponent.createObject(this, {
+            "name": "Claude Opus 5",
+            "icon": "claude-symbolic",
+            "description": Translation.tr("Online | %1's model | Strong at coding, reasoning and following instructions closely").arg("Anthropic"),
+            "homepage": "https://www.anthropic.com/claude",
+            "endpoint": "https://api.justwoker.icu/v1/chat/completions",
+            "model": "claude-opus-5",
+            "requires_key": true,
+            "key_id": "justwoker",
+            "key_get_link": "https://api.justwoker.icu",
+            "key_get_description": Translation.tr("**Instructions**: Use the API key issued for your justwoker.icu account. The same key works for every Claude model in this list."),
+            "api_format": "claude",
+        }),
+        "claude-opus-5-thinking": aiModelComponent.createObject(this, {
+            "name": "Claude Opus 5 Thinking",
+            "icon": "claude-symbolic",
+            "description": Translation.tr("Online | %1's model | Same model with extended reasoning shown before the answer. Slower, better on hard problems").arg("Anthropic"),
+            "homepage": "https://www.anthropic.com/claude",
+            "endpoint": "https://api.justwoker.icu/v1/chat/completions",
+            "model": "claude-opus-5-thinking",
+            "requires_key": true,
+            "key_id": "justwoker",
+            "key_get_link": "https://api.justwoker.icu",
+            "key_get_description": Translation.tr("**Instructions**: Use the API key issued for your justwoker.icu account. The same key works for every Claude model in this list."),
+            "api_format": "claude",
+        }),
+        "glm-5.3": aiModelComponent.createObject(this, {
+            "name": "GLM 5.3",
+            "icon": "spark-symbolic",
+            "description": Translation.tr("Online | %1's model | Fast and cheap for long sessions, solid at coding and tool use").arg("Z.ai"),
+            "homepage": "https://agentrouter.org",
+            "endpoint": "https://agentrouter.org/v1/chat/completions",
+            "model": "glm-5.3",
+            "requires_key": true,
+            "key_id": "agentrouter",
+            "key_get_link": "https://agentrouter.org",
+            "key_get_description": Translation.tr("**Instructions**: Use the API key issued for your agentrouter.org account. The same key works for every AgentRouter model in this list."),
+            "api_format": "openai",
+            // AgentRouter answers 401 "unauthorized client detected" unless the
+            // request looks like it comes from a CLI client it supports
+            "extraHeaders": ({ "User-Agent": "claude-cli/1.0.0 (external, cli)" }),
+        }),
+        "deepseek-v4-flash": aiModelComponent.createObject(this, {
+            "name": "DeepSeek V4 Flash",
+            "icon": "deepseek-symbolic",
+            "description": Translation.tr("Online | %1's model | Lightweight and quick, shows its reasoning before answering").arg("DeepSeek"),
+            "homepage": "https://agentrouter.org",
+            "endpoint": "https://agentrouter.org/v1/chat/completions",
+            "model": "deepseek-v4-flash",
+            "requires_key": true,
+            "key_id": "agentrouter",
+            "key_get_link": "https://agentrouter.org",
+            "key_get_description": Translation.tr("**Instructions**: Use the API key issued for your agentrouter.org account. The same key works for every AgentRouter model in this list."),
+            "api_format": "openai",
+            // Same client check as the other AgentRouter models
+            "extraHeaders": ({ "User-Agent": "claude-cli/1.0.0 (external, cli)" }),
+        }),
+        "agnes-2.5-flash": aiModelComponent.createObject(this, {
+            "name": "Agnes 2.5 Flash",
+            "icon": "spark-symbolic",
+            "description": Translation.tr("Online | %1's free model | Fast, streams its reasoning and calls tools, so it works as a coding agent").arg("Agnes AI"),
+            "homepage": "https://agnes-ai.com",
+            "endpoint": "https://apihub.agnes-ai.com/v1/chat/completions",
+            "model": "agnes-2.5-flash",
+            "requires_key": true,
+            "key_id": "agnes",
+            "key_get_link": "https://agnes-ai.com",
+            "key_get_description": Translation.tr("**Pricing**: free tier.\n\n**Instructions**: Use the API key issued for your Agnes AI account. The same key works for every Agnes model in this list."),
+            "api_format": "openai",
+        }),
+        "agnes-2.5-pro": aiModelComponent.createObject(this, {
+            "name": "Agnes 2.5 Pro",
+            "icon": "spark-symbolic",
+            "description": Translation.tr("Online | %1's model | Slower sibling of Flash, better on hard problems").arg("Agnes AI"),
+            "homepage": "https://agnes-ai.com",
+            "endpoint": "https://apihub.agnes-ai.com/v1/chat/completions",
+            "model": "agnes-2.5-pro",
+            "requires_key": true,
+            "key_id": "agnes",
+            "key_get_link": "https://agnes-ai.com",
+            "key_get_description": Translation.tr("**Pricing**: free tier.\n\n**Instructions**: Use the API key issued for your Agnes AI account. The same key works for every Agnes model in this list."),
+            "api_format": "openai",
+        }),
+        "genspark-gemini-3.7-flash": aiModelComponent.createObject(this, {
+            "name": "Gemini 3.7 Flash (Genspark)",
+            "icon": "google-gemini-symbolic",
+            "description": Translation.tr("Online | Google via Genspark Proxy | Fast, advanced multimodal reasoning"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/gemini/v1beta/models/gemini-3.7-flash:streamGenerateContent",
+            "model": "gemini-3.7-flash",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "gemini",
+        }),
+        "genspark-claude-opus-5": aiModelComponent.createObject(this, {
+            "name": "Claude Opus 5 (Genspark)",
+            "icon": "claude-symbolic",
+            "description": Translation.tr("Online | Anthropic via Genspark Proxy | Premium reasoning and coding"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/v1/chat/completions",
+            "model": "claude-opus-5",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "openai",
+        }),
+        "genspark-claude-sonnet-4-5": aiModelComponent.createObject(this, {
+            "name": "Claude Sonnet 4.5 (Genspark)",
+            "icon": "claude-symbolic",
+            "description": Translation.tr("Online | Anthropic via Genspark Proxy | Fast, balanced model"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/v1/chat/completions",
+            "model": "claude-sonnet-4-5",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "openai",
+        }),
+        "genspark-gpt-5-codex": aiModelComponent.createObject(this, {
+            "name": "GPT 5 Codex (Genspark)",
+            "icon": "spark-symbolic",
+            "description": Translation.tr("Online | OpenAI via Genspark Proxy | Codex model for coding and reasoning"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/v1/chat/completions",
+            "model": "gpt-5-codex",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "openai",
+        }),
+        "genspark-deepseek-v4-flash": aiModelComponent.createObject(this, {
+            "name": "DeepSeek V4 Flash (Genspark)",
+            "icon": "deepseek-symbolic",
+            "description": Translation.tr("Online | DeepSeek via Genspark Proxy | Ultra-fast reasoning and code"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/v1/chat/completions",
+            "model": "deep-seek-v4-flash",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "openai",
+        }),
+        "genspark-minimax-m3": aiModelComponent.createObject(this, {
+            "name": "MiniMax M3 (Genspark)",
+            "icon": "spark-symbolic",
+            "description": Translation.tr("Online | MiniMax via Genspark Proxy | Multilingual large context reasoning"),
+            "homepage": "https://www.genspark.ai",
+            "endpoint": "https://www.genspark.ai/api/llm_proxy/v1/chat/completions",
+            "model": "minimax-m3",
+            "requires_key": true,
+            "key_id": "genspark",
+            "key_get_link": "https://www.genspark.ai",
+            "key_get_description": Translation.tr("**Instructions**: Uses your Genspark login API key (~/.genspark-tool-cli/config.json)."),
+            "api_format": "openai",
+        }),
     }
     property var modelList: Object.keys(root.models)
     property var currentModelId: Persistent.states?.ai?.model || modelList[0]
@@ -302,6 +577,7 @@ Singleton {
         "openai": openaiApiStrategy.createObject(this),
         "gemini": geminiApiStrategy.createObject(this),
         "mistral": mistralApiStrategy.createObject(this),
+        "claude": claudeApiStrategy.createObject(this),
     }
     property ApiStrategy currentApiStrategy: apiStrategies[models[currentModelId]?.api_format || "openai"]
 
@@ -596,9 +872,9 @@ Singleton {
         function makeRequest() {
             const model = models[currentModelId];
 
-            // Fetch API keys if needed
-            if (model?.requires_key && !KeyringStorage.loaded) KeyringStorage.fetchKeyringData();
-            
+            // Don't send until the key for this model is actually loaded
+            if (!root.ensureKeyForRequest(model)) return;
+
             requester.currentStrategy = root.currentApiStrategy;
             requester.currentStrategy.reset(); // Reset strategy state
 
@@ -612,9 +888,9 @@ Singleton {
             const data = root.currentApiStrategy.buildRequestData(model, filteredMessageArray, root.systemPrompt, root.temperature, root.tools[model.api_format][root.currentTool], root.pendingFilePath);
             // console.log("[Ai] Request data: ", JSON.stringify(data, null, 2));
 
-            let requestHeaders = {
+            let requestHeaders = Object.assign({
                 "Content-Type": "application/json",
-            }
+            }, model.extraHeaders ?? {})
             
             /* Create local message object */
             requester.message = root.aiMessageComponent.createObject(root, {
@@ -703,7 +979,7 @@ Singleton {
 
         onExited: (exitCode, exitStatus) => {
             const result = requester.currentStrategy.onRequestFinished(requester.message);
-            
+
             if (result.finished) {
                 requester.markDone();
             } else if (!requester.message.done) {
@@ -714,11 +990,26 @@ Singleton {
             if (requester.message.content.includes("API key not valid")) {
                 root.addApiKeyAdvice(models[requester.message.model]);
             }
+
+            // A stream that ends without a finish reason can still leave a
+            // complete tool call buffered in the strategy.
+            if (result.functionCall) {
+                requester.message.functionCall = result.functionCall;
+                root.handleFunctionCall(result.functionCall.name, result.functionCall.args, requester.message);
+                return;
+            }
+
+            // A tool finished while this request was still streaming
+            if (root.continuationQueued) {
+                root.continuationQueued = false;
+                requester.makeRequest();
+            }
         }
     }
 
     function sendUserMessage(message) {
         if (message.length === 0) return;
+        root.toolTurnCount = 0; // Fresh budget for each user turn
         root.addMessage(message, "user");
         requester.makeRequest();
     }
@@ -739,45 +1030,158 @@ Singleton {
         requester.makeRequest();
     }
 
-    function createFunctionOutputMessage(name, output, includeOutputInChat = true) {
+    function createFunctionOutputMessage(name, output, includeOutputInChat = true, toolCallId = "") {
         return aiMessageComponent.createObject(root, {
             "role": "user",
             "content": `[[ Output of ${name} ]]${includeOutputInChat ? ("\n\n<think>\n" + output + "\n</think>") : ""}`,
             "rawContent": `[[ Output of ${name} ]]${includeOutputInChat ? ("\n\n<think>\n" + output + "\n</think>") : ""}`,
             "functionName": name,
             "functionResponse": output,
+            "toolCallId": toolCallId,
             "thinking": false,
             "done": true,
             // "visibleToUser": false,
         });
     }
 
-    function addFunctionOutputMessage(name, output) {
-        const aiMessage = createFunctionOutputMessage(name, output);
+    function addFunctionOutputMessage(name, output, toolCallId = "") {
+        const aiMessage = createFunctionOutputMessage(name, output, true, toolCallId);
         const id = idForMessage(aiMessage);
         root.messageIDs = [...root.messageIDs, id];
         root.messageByID[id] = aiMessage;
     }
 
+    /**
+     * Number of consecutive tool round-trips since the user last spoke.
+     * Prevents a model that keeps calling tools from looping forever.
+     */
+    property int toolTurnCount: 0
+    readonly property int maxToolTurns: 25
+    /** Set when a tool finished before the streaming request process exited. */
+    property bool continuationQueued: false
+
+    /**
+     * Starts the next model request, waiting for the in-flight one to exit first.
+     * Read-only tools can finish faster than curl closes its stream, and starting
+     * a second request on the same Process would clobber it.
+     */
+    function requestContinuation() {
+        if (requester.running) {
+            root.continuationQueued = true;
+            return;
+        }
+        requester.makeRequest();
+    }
+
+    /**
+     * Feeds a tool result back to the model and lets it continue.
+     * toolCallId links the result to the call the model made, which providers
+     * require before they will accept the next turn.
+     * Stops and tells the user if the model has been looping too long.
+     */
+    function continueWithToolOutput(name, output, toolCallId = "") {
+        root.addFunctionOutputMessage(name, output, toolCallId);
+        root.toolTurnCount += 1;
+        if (root.toolTurnCount > root.maxToolTurns) {
+            root.addMessage(
+                Translation.tr("Stopped after %1 tool calls in a row. Send another message to continue.").arg(root.maxToolTurns),
+                root.interfaceRole
+            );
+            return;
+        }
+        root.requestContinuation();
+    }
+
+    /** One-line description of a pending tool call, shown in the approval prompt. */
+    function describeToolCall(name, args) {
+        if (name === "run_shell_command") return args?.command ?? "";
+        if (name === "write_file") {
+            const lineCount = (args?.content ?? "").split("\n").length;
+            return Translation.tr("Write %1 (%2 lines)").arg(args?.path ?? "?").arg(lineCount);
+        }
+        if (name === "edit_file") {
+            return Translation.tr("Edit %1").arg(args?.path ?? "?");
+        }
+        return `${name}(${JSON.stringify(args ?? {})})`;
+    }
+
+    /** Markdown preview of what a pending tool call would do. */
+    function previewToolCall(name, args) {
+        if (name === "run_shell_command") {
+            return `\n\n**${Translation.tr("Command execution request")}**\n\n\`\`\`command\n${args.command}\n\`\`\``;
+        }
+        if (name === "write_file") {
+            return `\n\n**${Translation.tr("Wants to write")} \`${args.path}\`**\n\n\`\`\`command\n${args.content ?? ""}\n\`\`\``;
+        }
+        if (name === "edit_file") {
+            const before = (args.old_string ?? "").split("\n").map(line => `- ${line}`).join("\n");
+            const after = (args.new_string ?? "").split("\n").map(line => `+ ${line}`).join("\n");
+            return `\n\n**${Translation.tr("Wants to edit")} \`${args.path}\`**\n\n\`\`\`command\n${before}\n${after}\n\`\`\``;
+        }
+        return `\n\n\`\`\`command\n${name}(${JSON.stringify(args, null, 2)})\n\`\`\``;
+    }
+
+    /**
+     * Parks a tool call until the user approves or rejects it.
+     * The message shows a preview plus Approve/Reject buttons.
+     */
+    function requestToolApproval(name, args, message: AiMessageData) {
+        message.pendingToolName = name;
+        message.pendingToolArgs = args;
+        message.pendingToolSummary = root.describeToolCall(name, args);
+        const preview = root.previewToolCall(name, args);
+        message.rawContent += preview;
+        message.content += preview;
+        message.functionPending = true; // Marks the message as awaiting a decision
+    }
+
     function rejectCommand(message: AiMessageData) {
         if (!message.functionPending) return;
         message.functionPending = false; // User decided, no more "thinking"
-        addFunctionOutputMessage(message.functionName, Translation.tr("Command rejected by user"))
+        const name = message.pendingToolName || message.functionName;
+        message.pendingToolName = "";
+        root.continueWithToolOutput(
+            name,
+            Translation.tr("Rejected by user. Do not retry this; ask what they'd prefer instead."),
+            message.toolCallId
+        );
     }
 
     function approveCommand(message: AiMessageData) {
         if (!message.functionPending) return;
         message.functionPending = false; // User decided, no more "thinking"
+        const name = message.pendingToolName || message.functionName;
+        const args = message.pendingToolArgs ?? message.functionCall?.args ?? {};
+        message.pendingToolName = "";
 
-        const responseMessage = createFunctionOutputMessage(message.functionName, "", false);
+        if (name === "run_shell_command") {
+            root.runApprovedShellCommand(name, args, message);
+            return;
+        }
+        root.runAgentTool(name, args, message.toolCallId);
+    }
+
+    /** Streams an approved shell command's output into a new message. */
+    function runApprovedShellCommand(name, args, message: AiMessageData) {
+        const responseMessage = createFunctionOutputMessage(name, "", false, message.toolCallId);
         const id = idForMessage(responseMessage);
         root.messageIDs = [...root.messageIDs, id];
         root.messageByID[id] = responseMessage;
 
         commandExecutionProc.message = responseMessage;
         commandExecutionProc.baseMessageContent = responseMessage.content;
-        commandExecutionProc.shellCommand = message.functionCall.args.command;
+        commandExecutionProc.shellCommand = args.command;
         commandExecutionProc.running = true; // Start the command execution
+    }
+
+    /** Runs a file/search tool through AgentTools and continues the conversation. */
+    function runAgentTool(name, args, toolCallId = "") {
+        AgentTools.run(name, args, root.workingDirectory, result => {
+            const output = result.ok
+                ? (result.content ?? "")
+                : `Error: ${result.error ?? "unknown failure"}`;
+            root.continueWithToolOutput(name, output, toolCallId);
+        });
     }
 
     Process {
@@ -786,6 +1190,7 @@ Singleton {
         property AiMessageData message
         property string baseMessageContent: ""
         command: ["bash", "-c", shellCommand]
+        workingDirectory: root.workingDirectory
         stdout: SplitParser {
             onRead: (output) => {
                 commandExecutionProc.message.functionResponse += output + "\n\n";
@@ -794,42 +1199,55 @@ Singleton {
                 commandExecutionProc.message.content = updatedContent;
             }
         }
+        stderr: SplitParser {
+            onRead: (output) => {
+                commandExecutionProc.message.functionResponse += output + "\n\n";
+            }
+        }
         onExited: (exitCode, exitStatus) => {
             commandExecutionProc.message.functionResponse += `[[ Command exited with code ${exitCode} (${exitStatus}) ]]\n`;
-            requester.makeRequest(); // Continue
+            root.toolTurnCount += 1;
+            if (root.toolTurnCount > root.maxToolTurns) {
+                root.addMessage(
+                    Translation.tr("Stopped after %1 tool calls in a row. Send another message to continue.").arg(root.maxToolTurns),
+                    root.interfaceRole
+                );
+                return;
+            }
+            root.requestContinuation(); // Continue
         }
     }
 
     function handleFunctionCall(name, args: var, message: AiMessageData) {
+        const callId = message.toolCallId ?? "";
         if (name === "switch_to_search_mode") {
-            const modelId = root.currentModelId;
             root.currentTool = "search"
             root.postResponseHook = () => { root.currentTool = "functions" }
-            addFunctionOutputMessage(name, Translation.tr("Switched to search mode. Continue with the user's request."))
-            requester.makeRequest();
+            root.continueWithToolOutput(name, Translation.tr("Switched to search mode. Continue with the user's request."), callId);
         } else if (name === "get_shell_config") {
             const configJson = CF.ObjectUtils.toPlainObject(Config.options)
-            addFunctionOutputMessage(name, JSON.stringify(configJson));
-            requester.makeRequest();
+            root.continueWithToolOutput(name, JSON.stringify(configJson), callId);
         } else if (name === "set_shell_config") {
-            if (!args.key || !args.value) {
-                addFunctionOutputMessage(name, Translation.tr("Invalid arguments. Must provide `key` and `value`."));
+            if (!args.key || args.value === undefined) {
+                root.continueWithToolOutput(name, Translation.tr("Invalid arguments. Must provide `key` and `value`."), callId);
                 return;
             }
-            const key = args.key;
-            const value = args.value;
-            Config.setNestedValue(key, value);
+            Config.setNestedValue(args.key, args.value);
+            root.continueWithToolOutput(name, Translation.tr("Set %1 to %2").arg(args.key).arg(args.value), callId);
         } else if (name === "run_shell_command") {
             if (!args.command || args.command.length === 0) {
-                addFunctionOutputMessage(name, Translation.tr("Invalid arguments. Must provide `command`."));
+                root.continueWithToolOutput(name, Translation.tr("Invalid arguments. Must provide `command`."), callId);
                 return;
             }
-            const contentToAppend = `\n\n**Command execution request**\n\n\`\`\`command\n${args.command}\n\`\`\``;
-            message.rawContent += contentToAppend;
-            message.content += contentToAppend;
-            message.functionPending = true; // Use thinking to indicate the command is waiting for approval
+            root.requestToolApproval(name, args, message);
+        } else if (AgentTools.isKnownTool(name)) {
+            if (AgentTools.needsApproval(name)) {
+                root.requestToolApproval(name, args, message);
+            } else {
+                root.runAgentTool(name, args, callId);
+            }
         }
-        else root.addMessage(Translation.tr("Unknown function call: %1").arg(name), "assistant");
+        else root.continueWithToolOutput(name, Translation.tr("Unknown tool: %1").arg(name), callId);
     }
 
     function chatToJson() {
@@ -849,6 +1267,7 @@ Singleton {
                 "functionName": message.functionName,
                 "functionCall": message.functionCall,
                 "functionResponse": message.functionResponse,
+                "toolCallId": message.toolCallId,
                 "visibleToUser": message.visibleToUser,
             })
         })
@@ -905,6 +1324,7 @@ Singleton {
                     "functionName": message.functionName,
                     "functionCall": message.functionCall,
                     "functionResponse": message.functionResponse,
+                    "toolCallId": message.toolCallId ?? "",
                     "visibleToUser": message.visibleToUser,
                 });
             }

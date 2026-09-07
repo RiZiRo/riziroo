@@ -8,10 +8,14 @@ Canvas {
     property bool hoverActive: false
     property bool locked: false
     required property real currentWidth
-    property string resizeMode: "horizontal" 
+    // Only needed by consumers that listen to resizedFree, i.e. the ones sized in both axes
+    property real currentHeight: 0
+    property string resizeMode: "horizontal"
 
     signal resized(real newValue)
     signal resizedXY(real dx, real dy, real startWidth)
+    // Width and height straight from the pointer, for widgets that are free in both axes
+    signal resizedFree(real newWidth, real newHeight)
     signal resizeFinished()
 
     width: 62
@@ -49,15 +53,17 @@ Canvas {
         anchors.fill: parent
         anchors.margins: -6
         hoverEnabled: true
-        cursorShape: root.resizeMode === "diagonal" ? Qt.SizeFDiagCursor : Qt.SizeHorCursor
+        cursorShape: (root.resizeMode === "diagonal" || root.resizeMode === "free") ? Qt.SizeFDiagCursor : Qt.SizeHorCursor
         preventStealing: true
 
         property real startValue: 0
+        property real startHeight: 0
         property real startX: 0
         property real startY: 0
 
         onPressed: (mouse) => {
             startValue = root.currentWidth
+            startHeight = root.currentHeight
             var globalPos = mapToItem(null, mouse.x, mouse.y)
             startX = globalPos.x
             startY = globalPos.y
@@ -67,11 +73,12 @@ Canvas {
             var globalPos = mapToItem(null, mouse.x, mouse.y)
             var dx = globalPos.x - startX
             var dy = globalPos.y - startY
-            var delta = root.resizeMode === "diagonal"
+            var delta = (root.resizeMode === "diagonal" || root.resizeMode === "free")
                 ? Math.max(dx, dy)
                 : dx
             root.resized(startValue + delta)
             root.resizedXY(dx, dy, startValue)
+            root.resizedFree(startValue + dx, startHeight + dy)
         }
         onReleased: {
             root.resizeFinished()

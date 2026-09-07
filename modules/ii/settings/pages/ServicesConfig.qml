@@ -213,12 +213,12 @@ ContentPage {
                         }
                         ConfigTextArea {
                             Layout.fillWidth: true
-                            buttonIcon: "emoji_symbols"
+                            buttonIcon: "smart_toy"
                             fieldWidth: 100
-                            text: Translation.tr("Icons")
-                            value: Config.options.search.prefix.symbols
+                            text: Translation.tr("AI")
+                            value: Config.options.search.prefix.ai ?? "."
                             onValueChanged: {
-                                Config.options.search.prefix.symbols = value;
+                                Config.options.search.prefix.ai = value;
                             }
                         }
                     }

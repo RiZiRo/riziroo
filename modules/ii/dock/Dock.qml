@@ -16,6 +16,12 @@ Scope {
     id: root
     property bool pinned: Config.options?.dock.pinnedOnStartup ?? false
 
+    // The dock's look is transparency plus the compositor's blur, nothing else.
+    // The blur is configured by the `quickshell:dock` layer rules in
+    // ~/.config/hypr/custom/rules.lua; this only decides how much of it shows
+    // through the panel.
+    property real dockTransparency: 0.94 // 0 = solid panel, 1 = fully see-through
+
     Variants {
         model: Quickshell.screens
 
@@ -92,20 +98,21 @@ Scope {
 
                         StyledRectangularShadow {
                             target: dockVisualBackground
-                            visible: false
+                            visible: dockVisualBackground.visible
                         }
 
                         Rectangle {
                             id: dockVisualBackground
-                            property real margin: Appearance.sizes.elevationMargin
                             anchors.fill: parent
                             anchors.topMargin:    Appearance.sizes.elevationMargin
                             anchors.bottomMargin: Appearance.sizes.hyprlandGapsOut
-                            color: Config.options.dock.showBackground
-                                   ? Appearance.colors.colLayer0 : "transparent"
-                            border.width: Config.options.dock.showBackground ? 1 : 0
-                            border.color: Appearance.colors.colLayer0Border
+                            visible: Config.options.dock.showBackground
                             radius: Appearance.rounding.normal + 6
+                            // Translucent so the compositor's blur reads through.
+                            // No border: at this alpha a hairline reads as a
+                            // separate, less transparent outline around the panel.
+                            color: ColorUtils.transparentize(Appearance.colors.colLayer0,
+                                                             root.dockTransparency)
                         }
 
                         RowLayout {

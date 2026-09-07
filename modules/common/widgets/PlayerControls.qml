@@ -21,6 +21,11 @@ Item {
     required property real radius
     signal toggleLyrics()
 
+    // Follows the drag while scrubbing so the readout matches the handle
+    readonly property real displayPosition: sliderLoader.item?.displayPosition ?? MediaUtils.trackPosition(root.player)
+    // Seeking to a point needs a track length to place that point in
+    readonly property bool seekable: MediaUtils.canSeekTo(root.player)
+
     component TrackChangeButton: RippleButton {
         implicitWidth: 24
         implicitHeight: 24
@@ -74,6 +79,22 @@ Item {
                 sourceSize.width: size
                 sourceSize.height: size
             }
+
+            // The cover doubles as the switch between the lyric views: karaoke sweep, line by line,
+            // then the plain text of the song
+            MouseArea {
+                id: artClickArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: LyricsService.cycleMode()
+
+                StyledToolTip {
+                    extraVisibleCondition: false
+                    alternativeVisibleCondition: artClickArea.containsMouse
+                    text: LyricsService.modeDescription
+                }
+            }
         }
 
         ColumnLayout {
@@ -119,7 +140,7 @@ Item {
                     color: root.blendedColors.colSubtext
                     elide: Text.ElideRight
                     font.features: { "tnum": 1 }
-                    text: `${StringUtils.friendlyTimeForSeconds(root.player?.position)} / ${StringUtils.friendlyTimeForSeconds(root.player?.length)}`
+                    text: MediaUtils.friendlyProgress(root.displayPosition, root.player)
                 }
 
                 RowLayout {
@@ -138,19 +159,22 @@ Item {
                     Item {
                         id: progressBarContainer
                         Layout.fillWidth: true
-                        implicitHeight: Math.max(sliderLoader.implicitHeight, progressBarLoader.implicitHeight)
+                        // Hold the seek bar's height even while the thinner fallback
+                        // indicator is mounted, so a player that publishes no track
+                        // length doesn't shift the rest of the controls down
+                        implicitHeight: Math.max(sliderLoader.implicitHeight, progressBarLoader.implicitHeight, 24)
 
                         Loader {
                             id: sliderLoader
                             anchors.fill: parent
-                            active: root.player?.canSeek ?? false
-                            sourceComponent: StyledSlider {
-                                configuration: StyledSlider.Configuration.Wavy
+                            active: root.seekable
+                            sourceComponent: MediaProgressSlider {
+                                player: root.player
+                                // Nothing here scrolls, so the wheel is free to seek
+                                wheelSeek: true
                                 highlightColor: root.blendedColors.colPrimary
                                 trackColor: root.blendedColors.colSecondaryContainer
                                 handleColor: root.blendedColors.colPrimary
-                                value: root.player?.position / root.player?.length
-                                onMoved: root.player.position = value * root.player.length
                             }
                         }
 
@@ -161,12 +185,13 @@ Item {
                                 left: parent.left
                                 right: parent.right
                             }
-                            active: !(root.player?.canSeek ?? false)
+                            active: !root.seekable
                             sourceComponent: StyledProgressBar {
                                 wavy: root.player?.isPlaying
+                                indeterminate: !MediaUtils.hasTrackLength(root.player)
                                 highlightColor: root.blendedColors.colPrimary
                                 trackColor: root.blendedColors.colSecondaryContainer
-                                value: root.player?.position / root.player?.length
+                                value: MediaUtils.trackProgress(root.player)
                             }
                         }
                     }
@@ -191,7 +216,7 @@ Item {
                     property real size: 44
                     implicitWidth: size
                     implicitHeight: size
-                    downAction: () => root.player.togglePlaying()
+                    downAction: () => MprisController.togglePlayer(root.player)
 
                     buttonRadius: root.player?.isPlaying ? Appearance?.rounding.normal : size / 2
                     colBackground: root.player?.isPlaying ? root.blendedColors.colPrimary : root.blendedColors.colSecondaryContainer

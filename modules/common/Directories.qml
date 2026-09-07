@@ -25,6 +25,10 @@ Singleton {
     property string scriptPath: Quickshell.shellPath("scripts")
     property string favicons: FileUtils.trimFileProtocol(`${Directories.cache}/media/favicons`)
     property string coverArt: FileUtils.trimFileProtocol(`${Directories.cache}/media/coverart`)
+    // Snapshots of the cover art players hand out, kept by MediaArt. Deliberately not wiped on
+    // startup like coverArt: an art URL can stop resolving the moment the player publishes the next
+    // one, so these copies are sometimes the only remaining source of a track's real cover.
+    property string mediaArt: FileUtils.trimFileProtocol(`${Directories.cache}/media/art`)
     property string tempImages: "/tmp/quickshell/media/images"
     property string booruPreviews: FileUtils.trimFileProtocol(`${Directories.cache}/media/boorus`)
     property string booruDownloads: FileUtils.trimFileProtocol(Directories.pictures  + "/homework")
@@ -34,6 +38,7 @@ Singleton {
     property string shellConfigName: "config.json"
     property string shellConfigPath: `${Directories.shellConfig}/${Directories.shellConfigName}`
 	property string todoPath: FileUtils.trimFileProtocol(`${Directories.state}/user/todo.json`)
+    property string islandFrecencyPath: FileUtils.trimFileProtocol(`${Directories.state}/user/island_frecency.json`)
 	property string notesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/notes.txt`)
     property string desktopNotesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/desktopnotes.txt`)
 	property string conflictCachePath: FileUtils.trimFileProtocol(`${Directories.cache}/conflict-killer`)
@@ -61,6 +66,8 @@ Singleton {
         Quickshell.execDetached(["mkdir", "-p", `${shellConfig}`])
         Quickshell.execDetached(["mkdir", "-p", `${favicons}`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${coverArt}'; mkdir -p '${coverArt}'`])
+        // Age these out instead of wiping them: see the note on mediaArt above
+        Quickshell.execDetached(["bash", "-c", `mkdir -p '${mediaArt}'; find '${mediaArt}' -type f -mtime +7 -delete`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${booruPreviews}'; mkdir -p '${booruPreviews}'`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${latexOutput}'; mkdir -p '${latexOutput}'`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${cliphistDecode}'; mkdir -p '${cliphistDecode}'`])

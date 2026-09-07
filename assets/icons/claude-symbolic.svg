@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="19.856" height="19.856" viewBox="0 0 128 128" version="1.1">
+  <g fill="#4d4d4d">
+    <g transform="rotate(0 64 64)"><path d="M64 11c2.7 0 4.9 2.1 5.1 4.8L71.5 62h-15l2.4-46.2C59.1 13.1 61.3 11 64 11z"/></g>
+    <g transform="rotate(45 64 64)"><path d="M64 19c2.2 0 4 1.7 4.2 3.9L70 62H58l1.8-39.1C60 20.7 61.8 19 64 19z"/></g>
+    <g transform="rotate(90 64 64)"><path d="M64 11c2.7 0 4.9 2.1 5.1 4.8L71.5 62h-15l2.4-46.2C59.1 13.1 61.3 11 64 11z"/></g>
+    <g transform="rotate(135 64 64)"><path d="M64 19c2.2 0 4 1.7 4.2 3.9L70 62H58l1.8-39.1C60 20.7 61.8 19 64 19z"/></g>
+    <g transform="rotate(180 64 64)"><path d="M64 11c2.7 0 4.9 2.1 5.1 4.8L71.5 62h-15l2.4-46.2C59.1 13.1 61.3 11 64 11z"/></g>
+    <g transform="rotate(225 64 64)"><path d="M64 19c2.2 0 4 1.7 4.2 3.9L70 62H58l1.8-39.1C60 20.7 61.8 19 64 19z"/></g>
+    <g transform="rotate(270 64 64)"><path d="M64 11c2.7 0 4.9 2.1 5.1 4.8L71.5 62h-15l2.4-46.2C59.1 13.1 61.3 11 64 11z"/></g>
+    <g transform="rotate(315 64 64)"><path d="M64 19c2.2 0 4 1.7 4.2 3.9L70 62H58l1.8-39.1C60 20.7 61.8 19 64 19z"/></g>
+  </g>
+</svg>

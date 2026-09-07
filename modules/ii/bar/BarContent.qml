@@ -42,7 +42,9 @@ Item {
 
     function shouldPaintMaterialPill(name) {
         if (Config.options.bar.cornerStyle !== 3) return false;
-        const blacklist = ["workspaces", "divisor", "powerButton", "docktoPanel", "leftSidebarButton", "activeWindow"];
+        // dynamicIsland is here because it paints and animates its own shell; a BarGroup pill
+        // around it would resize on a different curve and break the morph.
+        const blacklist = ["workspaces", "divisor", "powerButton", "docktoPanel", "leftSidebarButton", "activeWindow", "dynamicIsland"];
         if (blacklist.includes(name)) {
             return false;
         }
@@ -143,6 +145,7 @@ Item {
                     Component {
                         id: leftMaterialGroupDelegate
                         BarGroup {
+                            id: leftMaterialGroup
                             Layout.fillHeight: true
                             currentIndex: index
                             totalCount: root.effectiveLeftLayout.length
@@ -152,8 +155,10 @@ Item {
                                 Layout.fillHeight: true
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => leftMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -176,6 +181,7 @@ Item {
                 Component {
                     id: leftBarGroupDelegate
                     BarGroup {
+                        id: leftBarGroup
                         Layout.fillHeight: true
                         currentIndex: index
                         totalCount: root.effectiveLeftLayout.length
@@ -183,8 +189,10 @@ Item {
                             Layout.fillHeight: true
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => leftBarGroup.contentColor)
                             }
                         }
                     }
@@ -198,7 +206,7 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored"))
+                            if (item && modelData === "visualizer")
                                 item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
                         }
                     }
@@ -219,7 +227,7 @@ Item {
                 visible: root.isMaterial
                 anchors.centerIn: parent
                 implicitWidth: centerMaterialRow.implicitWidth + 10
-                implicitHeight: centerMaterialRow.implicitHeight 
+                implicitHeight: centerMaterialRow.implicitHeight
                 radius: Appearance.rounding.full
                 color: Appearance.colors.colLayer0
 
@@ -236,6 +244,7 @@ Item {
                     Component {
                         id: middleMaterialGroupDelegate
                         BarGroup {
+                            id: middleMaterialGroup
                             Layout.fillHeight: true
                             currentIndex: index
                             totalCount: root.effectiveMiddleLayout.length
@@ -245,8 +254,10 @@ Item {
                                 Layout.fillHeight: true
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => middleMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -269,6 +280,7 @@ Item {
                 Component {
                     id: middleBarGroupDelegate
                     BarGroup {
+                        id: middleBarGroup
                         Layout.fillHeight: true
                         currentIndex: index
                         totalCount: root.effectiveMiddleLayout.length
@@ -276,8 +288,10 @@ Item {
                             Layout.fillHeight: true
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => middleBarGroup.contentColor)
                             }
                         }
                     }
@@ -290,7 +304,7 @@ Item {
                         Layout.topMargin: Config.options.bar.bottom ? -5 : 3
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored"))
+                            if (item && modelData === "visualizer")
                                 item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
                         }
                     }
@@ -329,6 +343,7 @@ Item {
                     Component {
                         id: rightMaterialGroupDelegate
                         BarGroup {
+                            id: rightMaterialGroup
                             Layout.fillHeight: true
                             currentIndex: index
                             totalCount: root.effectiveRightLayout.length
@@ -338,8 +353,10 @@ Item {
                                 Layout.fillHeight: true
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && modelData === "visualizer")
                                         item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index)
+                                    if (item?.contentColor !== undefined)
+                                        item.contentColor = Qt.binding(() => rightMaterialGroup.contentColor)
                                 }
                             }
                         }
@@ -362,6 +379,7 @@ Item {
                 Component {
                     id: rightBarGroupDelegate
                     BarGroup {
+                        id: rightBarGroup
                         Layout.fillHeight: true
                         currentIndex: index
                         totalCount: root.effectiveRightLayout.length
@@ -369,8 +387,10 @@ Item {
                             Layout.fillHeight: true
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && modelData === "visualizer")
                                     item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index)
+                                if (item?.contentColor !== undefined)
+                                    item.contentColor = Qt.binding(() => rightBarGroup.contentColor)
                             }
                         }
                     }
@@ -383,7 +403,7 @@ Item {
                         Layout.topMargin: Config.options.bar.bottom ? -5 : 3
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored"))
+                            if (item && modelData === "visualizer")
                                 item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index)
                         }
                     }

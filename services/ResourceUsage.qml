@@ -7,7 +7,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Simple polled resource usage service with RAM, Swap, CPU and Disk usage.
+ * Simple polled resource usage service with RAM, Swap, CPU, GPU and Disk usage.
  */
 Singleton {
     id: root
@@ -40,6 +40,15 @@ Singleton {
     property list<real> diskUsageHistory: []
     property string maxAvailableDiskString: kbToGbString(diskTotal)
 
+    property bool gpuAvailable: false
+    property real gpuUsage: 0
+    property real gpuMemTotal: 1
+    property real gpuMemUsed: 0
+    property real gpuMemUsedPercentage: gpuMemTotal > 0 ? gpuMemUsed / gpuMemTotal : 0
+    property real gpuTemp: 0
+    property list<real> gpuUsageHistory: []
+    property string maxAvailableGpuMemString: kbToGbString(gpuMemTotal)
+
     Process {
         id: tempProc
         command: ["bash", "-c", "sensors 2>/dev/null | grep -E 'Package id 0|Tctl|Tdie' | grep -oP '\\+\\K[0-9.]+(?=°C)' | head -1"]
@@ -65,15 +74,39 @@ Singleton {
         }
     }
 
+    Process {
+        id: gpuProc
+        environment: ({ LANG: "C", LC_ALL: "C" })
+        command: ["bash", "-c", "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null | head -1"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // "39, 695, 12288, 54" -> percent, MiB, MiB, °C
+                const parts = text.trim().split(",").map(part => parseFloat(part))
+                if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[2])) {
+                    root.gpuUsage = parts[0] / 100
+                    root.gpuMemUsed = parts[1] * 1024
+                    root.gpuMemTotal = parts[2] * 1024
+                    root.gpuTemp = isNaN(parts[3]) ? 0 : parts[3]
+                    root.gpuAvailable = true
+                } else {
+                    root.gpuAvailable = false
+                }
+            }
+        }
+    }
+
     Timer {
         interval: Config?.options.resources.updateInterval ?? 3000
         running: true
         repeat: true
+        triggeredOnStart: true
         onTriggered: {
             tempProc.running = false
             tempProc.running = true
             diskProc.running = false
             diskProc.running = true
+            gpuProc.running = false
+            gpuProc.running = true
         }
     }
 
@@ -97,11 +130,16 @@ Singleton {
         diskUsageHistory = [...diskUsageHistory, diskUsedPercentage]
         if (diskUsageHistory.length > historyLength) diskUsageHistory.shift()
     }
+    function updateGpuUsageHistory() {
+        gpuUsageHistory = [...gpuUsageHistory, gpuUsage]
+        if (gpuUsageHistory.length > historyLength) gpuUsageHistory.shift()
+    }
     function updateHistories() {
         updateMemoryUsageHistory()
         updateSwapUsageHistory()
         updateCpuUsageHistory()
         updateDiskUsageHistory()
+        updateGpuUsageHistory()
     }
 
     Timer {

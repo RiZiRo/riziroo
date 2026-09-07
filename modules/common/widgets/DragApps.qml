@@ -156,7 +156,7 @@ Item {
                 onClicked: {
                     const entry = slotItem.appEntry
                     if (!entry || entry.toplevels.length === 0) {
-                        slotItem.deskEntry?.execute()
+                        AppLaunchFeedback.launch(slotItem.deskEntry)
                         return
                     }
                     const next = (slotItem._lastFocused + 1) % entry.toplevels.length
@@ -164,8 +164,13 @@ Item {
                     entry.toplevels[next].activate()
                 }
 
-                middleClickAction: () => { slotItem.deskEntry?.execute() }
+                middleClickAction: () => { AppLaunchFeedback.launch(slotItem.deskEntry) }
                 altAction:         () => { TaskbarApps.togglePin(slotItem.appId) }
+
+                // Windows-like tooltip: show app name on hover.
+                PopupToolTip {
+                    text: slotItem.deskEntry?.name ?? slotItem.appEntry?.toplevels[0]?.title ?? slotItem.appId
+                }
 
                 contentItem: Item {
                     anchors.centerIn: parent

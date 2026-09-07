@@ -20,7 +20,15 @@ ColumnLayout {
     property var segmentLang: "txt"
     property var messageData: {}
     property bool isCommandRequest: segmentLang === "command"
-    property var displayLang: (isCommandRequest ? "bash" : segmentLang)
+    // A "command" block is any pending tool call, so highlight it by tool.
+    // Empty string means no definition, which the label renders as "plain".
+    property var displayLang: {
+        if (!root.isCommandRequest) return segmentLang;
+        const pending = root.messageData?.pendingToolName ?? "";
+        if (pending === "edit_file") return "diff";
+        if (pending === "write_file") return "";
+        return "bash";
+    }
 
     property real codeBlockBackgroundRounding: Appearance.rounding.small
     property real codeBlockHeaderPadding: 3
@@ -255,7 +263,29 @@ ColumnLayout {
                     Layout.margins: 6
                     Layout.topMargin: 0
                     sourceComponent: RowLayout {
-                        Item { Layout.fillWidth: true }
+                        spacing: 8
+
+                        MaterialSymbol {
+                            Layout.alignment: Qt.AlignVCenter
+                            iconSize: Appearance.font.pixelSize.large
+                            color: Appearance.colors.colSubtext
+                            text: {
+                                const pending = root.messageData?.pendingToolName ?? "";
+                                if (pending === "write_file") return "note_add";
+                                if (pending === "edit_file") return "edit_document";
+                                return "terminal";
+                            }
+                        }
+
+                        StyledText {
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colSubtext
+                            text: root.messageData?.pendingToolSummary ?? Translation.tr("Needs your approval")
+                        }
+
                         ButtonGroup {
                             GroupButton {
                                 contentItem: StyledText {

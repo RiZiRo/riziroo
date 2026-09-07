@@ -13,6 +13,8 @@ import QtQuick;
  * - key_get_description: Description of pricing and how to get an API key
  * - api_format: The API format of the model. Can be "openai" or "gemini". Default is "openai".
  * - extraParams: Extra parameters to be passed to the model. This is a JSON object.
+ * - extraHeaders: Extra HTTP headers to send with the request, for endpoints that
+ *   need more than Content-Type and the key. This is a JSON object.
  */
 
 QtObject {
@@ -29,4 +31,5 @@ QtObject {
     property string api_format: "openai"
     property var tools
     property var extraParams: ({})
+    property var extraHeaders: ({})
 }

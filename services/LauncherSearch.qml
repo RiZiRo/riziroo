@@ -17,7 +17,7 @@ Singleton {
     property string query: ""
 
     function ensurePrefix(prefix) {
-        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.symbols, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].some(i => root.query.startsWith(i))) {
+        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.ai ?? ".", Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].some(i => root.query.startsWith(i))) {
             root.query = prefix + root.query.slice(1);
         } else {
             root.query = prefix + root.query;
@@ -266,7 +266,30 @@ Singleton {
             return [];
 
         ///////////// Special cases ///////////////
-        if (root.query.startsWith(Config.options.search.prefix.clipboard)) {
+        if (root.query.startsWith(Config.options.search.prefix.translate)) {
+            // translate-shell is driven by services/TranslateService.qml, which watches this query itself.
+            // Named ...Service because QtQuick already exports a `Translate` transform type, and it
+            // wins name resolution -- `Translate.status` silently read undefined off it.
+            // Only the row is built here.
+            const ready = TranslateService.status === "ok" && TranslateService.result.length > 0;
+            const label = {
+                "idle": Translation.tr("Type something to translate"),
+                "loading": Translation.tr("Translating..."),
+                "failed": Translation.tr("Couldn't translate that")
+            };
+            return [resultComp.createObject(null, {
+                name: ready ? TranslateService.result : (label[TranslateService.status] ?? ""),
+                verb: ready ? Translation.tr("Copy") : "",
+                type: ready ? `${TranslateService.sourceLang} → ${TranslateService.targetLang}` : Translation.tr("Translate"),
+                iconName: "translate",
+                iconType: LauncherSearchResult.IconType.Material,
+                execute: () => {
+                    if (TranslateService.result.length > 0)
+                        Quickshell.clipboardText = TranslateService.result;
+                }
+            })].filter(Boolean);
+        } else if (root.query.startsWith(Config.options.search.prefix.clipboard)) {
+
             // Clipboard
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.clipboard);
             return Cliphist.fuzzyQuery(searchString).map((entry, index, array) => {
@@ -350,26 +373,88 @@ Singleton {
                     }
                 });
             }).filter(Boolean);
-        } else if (root.query.startsWith(Config.options.search.prefix.symbols)) {
-            // Material Symbols
-            const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.symbols);
-            return MaterialSymbolsSearch.fuzzyQuery(searchString).map(entry => {
-                const tabIdx = entry.indexOf("\t");
-                const symName = tabIdx >= 0 ? entry.slice(0, tabIdx) : entry;
-                const symTags = tabIdx >= 0 ? entry.slice(tabIdx + 1) : "";
-                return resultComp.createObject(null, {
-                    rawValue: entry,
-                    name: symName,
-                    iconName: symName,
+        } else if (root.query.startsWith(Config.options.search.prefix.ai ?? ".")) {
+            // Island AI — answer shows inline in the island results card.
+            // IslandAiService watches the query itself (same pattern as TranslateService).
+            const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.ai ?? ".").trim();
+            const aiStatus = IslandAiService.status;
+            const aiModelName = IslandAiService.modelName;
+            if (searchString.length === 0) {
+                return [resultComp.createObject(null, {
+                    name: Translation.tr("Type a question for %1").arg(aiModelName),
+                    verb: "",
+                    type: Translation.tr("AI"),
+                    iconName: "smart_toy",
                     iconType: LauncherSearchResult.IconType.Material,
-                    verb: Translation.tr("Copy"),
-                    type: Translation.tr("Symbol"),
-                    comment: symTags,
+                    execute: () => {}
+                })].filter(Boolean);
+            }
+            if (aiStatus === "loading" || aiStatus === "idle") {
+                return [resultComp.createObject(null, {
+                    name: Translation.tr("Thinking with %1...").arg(aiModelName),
+                    verb: "",
+                    type: Translation.tr("AI"),
+                    iconName: "smart_toy",
+                    iconType: LauncherSearchResult.IconType.Material,
+                    execute: () => {}
+                })].filter(Boolean);
+            }
+            if (aiStatus === "nokey") {
+                return [resultComp.createObject(null, {
+                    name: Translation.tr("No API key for %1 — type /key in the sidebar").arg(aiModelName),
+                    verb: Translation.tr("Open"),
+                    type: Translation.tr("AI"),
+                    iconName: "key",
+                    iconType: LauncherSearchResult.IconType.Material,
                     execute: () => {
-                        Quickshell.clipboardText = symName;
+                        GlobalStates.sidebarLeftOpen = true;
                     }
-                });
-            }).filter(Boolean);
+                })].filter(Boolean);
+            }
+            if (aiStatus === "failed") {
+                const msg = IslandAiService.result.length > 0 ? IslandAiService.result : Translation.tr("Couldn't get an answer");
+                return [resultComp.createObject(null, {
+                    name: msg,
+                    verb: Translation.tr("Retry"),
+                    type: Translation.tr("AI"),
+                    iconName: "error",
+                    iconType: LauncherSearchResult.IconType.Material,
+                    execute: () => {
+                        Quickshell.clipboardText = searchString;
+                    }
+                })].filter(Boolean);
+            }
+            // ok
+            return [resultComp.createObject(null, {
+                rawValue: IslandAiService.result,
+                name: IslandAiService.result,
+                verb: Translation.tr("Copy"),
+                type: aiModelName,
+                iconName: "smart_toy",
+                iconType: LauncherSearchResult.IconType.Material,
+                execute: () => {
+                    Quickshell.clipboardText = IslandAiService.result;
+                },
+                actions: [resultComp.createObject(null, {
+                        name: Translation.tr("Copy"),
+                        iconName: "content_copy",
+                        iconType: LauncherSearchResult.IconType.Material,
+                        execute: () => {
+                            Quickshell.clipboardText = IslandAiService.result;
+                        }
+                    }), resultComp.createObject(null, {
+                        name: Translation.tr("Open in sidebar"),
+                        iconName: "open_in_new",
+                        iconType: LauncherSearchResult.IconType.Material,
+                        execute: () => {
+                            const q = StringUtils.cleanPrefix(LauncherSearch.query, Config.options.search.prefix.ai ?? ".").trim();
+                            GlobalStates.sidebarLeftOpen = true;
+                            Qt.callLater(() => {
+                                Ai.sendUserMessage(q);
+                            });
+                        }
+                    })]
+            })].filter(Boolean);
         }
 
         ////////////////// Init ///////////////////
@@ -395,8 +480,10 @@ Singleton {
                 verb: Translation.tr("Open"),
                 execute: () => {
                     if (!entry.runInTerminal)
-                        entry.execute();
+                        AppLaunchFeedback.launch(entry);
                     else {
+                        // The window that shows up belongs to the terminal, not the app
+                        AppLaunchFeedback.trackEntry(entry, [Config.options.apps.terminal]);
                         // Probably needs more proper escaping, but this will do for now
                         Quickshell.execDetached(["bash", '-c', `${Config.options.apps.terminal} -e '${StringUtils.shellSingleQuoteEscape(entry.command.join(' '))}'`]);
                     }
@@ -412,8 +499,9 @@ Singleton {
                         iconType: LauncherSearchResult.IconType.System,
                         execute: () => {
                             if (!action.runInTerminal)
-                                action.execute();
+                                AppLaunchFeedback.launchAction(entry, action);
                             else {
+                                AppLaunchFeedback.trackEntry(entry, [Config.options.apps.terminal]);
                                 Quickshell.execDetached(["bash", '-c', `${Config.options.apps.terminal} -e '${StringUtils.shellSingleQuoteEscape(action.command.join(' '))}'`]);
                             }
                         }

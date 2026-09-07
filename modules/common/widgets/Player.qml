@@ -15,7 +15,8 @@ import Quickshell.Services.Mpris
 Item {
     id: root
     required property MprisPlayer player
-    property var artUrl: player?.trackArtUrl ?? ""
+    // The best art this player has offered for this track, not merely the latest one it published
+    property var artUrl: MediaArt.urlFor(player)
     property string artDownloadLocation: Directories.coverArt
     property string artFileName: Qt.md5(artUrl)
     property string artFilePath: `${artDownloadLocation}/${artFileName}`
@@ -41,8 +42,10 @@ Item {
     }
 
     Timer {
+        // MPRIS positions are pull-only, so poll while playing to keep the
+        // progress bar and time readout moving every second
         running: root.player?.playbackState == MprisPlaybackState.Playing
-        interval: Config.options.resources.updateInterval
+        interval: Math.min(1000, Config.options.resources.updateInterval)
         repeat: true
         onTriggered: root.player.positionChanged()
     }

@@ -15,7 +15,11 @@ Scope {
     property string protectionMessage: ""
     property var focusedScreen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name)
 
-    property string currentIndicator: "volume"
+    // Which indicator the current burst refers to. Kept in GlobalStates rather than locally so
+    // the dynamic island can render the same burst inside the bar pill
+    // (Config.options.bar.island.absorbOsd).
+    readonly property string currentIndicator: GlobalStates.osdIndicator
+
     property var indicators: [
         {
             id: "volume",
@@ -51,7 +55,7 @@ Scope {
         target: Brightness
         function onBrightnessChanged() {
             root.protectionMessage = "";
-            root.currentIndicator = "brightness";
+            GlobalStates.osdIndicator = "brightness";
             root.triggerOsd();
         }
     }
@@ -60,7 +64,7 @@ Scope {
         target: Hyprsunset
         function onGammaChangeAttempt() {
             root.protectionMessage = "";
-            root.currentIndicator = "gamma";
+            GlobalStates.osdIndicator = "gamma";
             root.triggerOsd();
         }
     }
@@ -71,13 +75,13 @@ Scope {
         function onVolumeChanged() {
             if (!Audio.ready)
                 return;
-            root.currentIndicator = "volume";
+            GlobalStates.osdIndicator = "volume";
             root.triggerOsd();
         }
         function onMutedChanged() {
             if (!Audio.ready)
                 return;
-            root.currentIndicator = "volume";
+            GlobalStates.osdIndicator = "volume";
             root.triggerOsd();
         }
     }
@@ -87,14 +91,19 @@ Scope {
         target: Audio
         function onSinkProtectionTriggered(reason) {
             root.protectionMessage = reason;
-            root.currentIndicator = "volume";
+            GlobalStates.osdIndicator = "volume";
             root.triggerOsd();
         }
     }
 
     Loader {
         id: osdLoader
+        // The island renders the same burst inside the bar pill when it's absorbing the OSD, and
+        // two of them at once is just noise. Flipping bar.island.absorbOsd off brings this back
+        // with no code change -- worth keeping, since the island only lives on the bar's centre
+        // while this window follows the focused screen.
         active: GlobalStates.osdVolumeOpen
+            && !(Config.options.bar.island.absorbOsd && Config.options.bar.island.enable && Config.options.bar.layouts.middleLayout.includes("dynamicIsland"))
 
         sourceComponent: PanelWindow {
             id: osdRoot

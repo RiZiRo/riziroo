@@ -2,12 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 MouseArea {
     id: root
 
     property bool vertical: false
+    property color contentColor: Appearance.colors.colOnLayer1
     property real downloadBytesPerSecond: 0
     property real uploadBytesPerSecond: 0
     property real downloadedBytes: 0
@@ -130,7 +132,7 @@ MouseArea {
             Layout.preferredWidth: root.vertical ? -1 : regularRateMetrics.width
             horizontalAlignment: Text.AlignRight
             text: speedLine.rateText
-            color: Appearance.colors.colOnLayer1
+            color: root.contentColor
             font.pixelSize: Appearance.font.pixelSize.smallest
             font.weight: Font.Medium
             font.features: { "tnum": 1 }
@@ -145,13 +147,13 @@ MouseArea {
         SpeedLine {
             iconName: "arrow_upward"
             rate: root.uploadBytesPerSecond
-            accentColor: Appearance.colors.colTertiary
+            accentColor: ColorUtils.pickReadable(Appearance.colors.colTertiary, root.contentColor)
         }
 
         SpeedLine {
             iconName: "arrow_downward"
             rate: root.downloadBytesPerSecond
-            accentColor: Appearance.colors.colPrimary
+            accentColor: ColorUtils.pickReadable(Appearance.colors.colPrimary, root.contentColor)
         }
     }
 

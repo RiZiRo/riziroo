@@ -15,6 +15,13 @@ Scope {
     id: overviewScope
     property bool dontAutoCancelSearch: false
 
+    // When the island is the bar's centre widget and configured to absorb search, the launcher
+    // keybinds route into it instead of opening this overlay. The workspace grid (Super+Tab,
+    // overviewWorkspacesToggle) is untouched either way -- only the search half moves.
+    readonly property bool islandAbsorbs: Config.options.bar.island.enable
+        && Config.options.bar.island.absorbSearch
+        && Config.options.bar.layouts.middleLayout.includes("dynamicIsland")
+
     PanelWindow {
         id: panelWindow
         property string searchingText: ""
@@ -123,6 +130,10 @@ Scope {
     }
 
     function toggleClipboard() {
+        if (overviewScope.islandAbsorbs) {
+            IslandState.toggle("search", "clipboard");
+            return;
+        }
         if (GlobalStates.overviewOpen && overviewScope.dontAutoCancelSearch) {
             GlobalStates.overviewOpen = false;
             return;
@@ -133,6 +144,10 @@ Scope {
     }
 
     function toggleEmojis() {
+        if (overviewScope.islandAbsorbs) {
+            IslandState.toggle("search", "emoji");
+            return;
+        }
         if (GlobalStates.overviewOpen && overviewScope.dontAutoCancelSearch) {
             GlobalStates.overviewOpen = false;
             return;
@@ -142,14 +157,26 @@ Scope {
         GlobalStates.overviewOpen = true;
     }
 
-    function toggleSymbols() {
+    function toggleAi() {
+        if (overviewScope.islandAbsorbs) {
+            IslandState.toggle("search", "ai");
+            return;
+        }
         if (GlobalStates.overviewOpen && overviewScope.dontAutoCancelSearch) {
             GlobalStates.overviewOpen = false;
             return;
         }
         overviewScope.dontAutoCancelSearch = true;
-        panelWindow.setSearchingText(Config.options.search.prefix.symbols);
+        panelWindow.setSearchingText(Config.options.search.prefix.ai ?? ".");
         GlobalStates.overviewOpen = true;
+    }
+
+    function toggleSearch() {
+        if (overviewScope.islandAbsorbs) {
+            IslandState.toggle("search");
+            return;
+        }
+        GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
     }
 
     IpcHandler {
@@ -180,7 +207,7 @@ Scope {
         description: "Toggles search on press"
 
         onPressed: {
-            GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+            overviewScope.toggleSearch();
         }
     }
     CompositorGlobalShortcut {
@@ -212,7 +239,7 @@ Scope {
                 GlobalStates.superReleaseMightTrigger = true;
                 return;
             }
-            GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+            overviewScope.toggleSearch();
         }
     }
     CompositorGlobalShortcut {
@@ -242,11 +269,11 @@ Scope {
     }
 
     CompositorGlobalShortcut {
-        name: "overviewSymbolsToggle"
-        description: "Toggle material symbols search on overview widget"
+        name: "overviewAiToggle"
+        description: "Toggle AI search on overview widget"
 
         onPressed: {
-            overviewScope.toggleSymbols();
+            overviewScope.toggleAi();
         }
     }
 }

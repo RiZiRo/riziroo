@@ -41,11 +41,13 @@ StyledPopup {
             spacing: 5
 
             ResourceCard {
-                label: "Swap"
-                iconText: "swap_horiz"
+                label: "GPU"
+                iconText: "deployed_code"
                 iconShape: MaterialShape.Shape.Bun
-                value: ResourceUsage.swapUsedPercentage
-                sublabel: root.formatKB(ResourceUsage.swapUsed) + " / " + root.formatKB(ResourceUsage.swapTotal)
+                value: ResourceUsage.gpuUsage
+                sublabel: ResourceUsage.gpuAvailable
+                    ? root.formatKB(ResourceUsage.gpuMemUsed) + " / " + root.formatKB(ResourceUsage.gpuMemTotal)
+                    : "No GPU detected"
             }
 
             ResourceCard {

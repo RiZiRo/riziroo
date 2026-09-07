@@ -31,7 +31,8 @@ MouseArea {
         return MprisController.activePlayer
     }
 
-    property var    artUrl:      activePlayer?.trackArtUrl ?? ""
+    // The best art this player has offered for this track, not merely the latest one it published
+    property var    artUrl:      MediaArt.urlFor(activePlayer)
 
     // Force focus on entry
     function forceFieldFocus() {
@@ -392,7 +393,7 @@ MouseArea {
                         id: mediaCircProg
                         Layout.alignment: Qt.AlignVCenter
                         lineWidth: Appearance.rounding.unsharpen
-                        value: activePlayer?.position / activePlayer?.length
+                        value: MediaUtils.trackProgress(activePlayer)
                         implicitSize: 24
                         colPrimary: Appearance.colors.colOnSurfaceVariant
                         enableAnimation: false

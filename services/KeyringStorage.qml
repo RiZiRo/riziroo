@@ -16,6 +16,8 @@ Singleton {
     id: root
 
     signal dataChanged()
+    /** Emitted after every fetch attempt, whether it found data, found nothing, or hit a locked keyring. */
+    signal fetchFinished()
 
     property bool loaded: false
     property var keyringData: ({})
@@ -120,6 +122,7 @@ Singleton {
             if (exitCode !== 2) {
                 root.loaded = true;
             }
+            root.fetchFinished();
         }
     }
     

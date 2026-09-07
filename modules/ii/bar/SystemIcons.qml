@@ -49,7 +49,7 @@ Item {
         }
         Loader {
             source: "HyprlandXkbIndicator.qml"
-            onLoaded: item.color = root.isMaterial ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1
+            onLoaded: item.contentColor = Qt.binding(() => root.isMaterial ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1)
         }
         MaterialSymbol {
             text: Network.materialSymbol

@@ -20,5 +20,13 @@ QtObject {
     property var functionCall
     property string functionResponse
     property bool functionPending: false
+    /** Provider-assigned id linking a tool call to its result. */
+    property string toolCallId
+    /** Name of the tool waiting for user approval, empty when nothing is pending. */
+    property string pendingToolName
+    /** Arguments for the tool waiting for user approval. */
+    property var pendingToolArgs
+    /** Human-readable summary of what the pending tool will do. */
+    property string pendingToolSummary
     property bool visibleToUser: true
 }

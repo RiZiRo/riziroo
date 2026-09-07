@@ -14,6 +14,7 @@ Item {
     property bool trayOverflowOpen: false
     property bool showSeparator: true
     property bool showOverflowMenu: true
+    property color contentColor: Appearance.colors.colOnLayer2
     property var activeMenu: null
     readonly property bool isOnLeft: Config.options.bar.layouts.leftLayout.includes("sysTray")
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3
@@ -94,7 +95,7 @@ Item {
                 iconSize: Appearance.font.pixelSize.larger
                 text: Config.options.bar.bottom ? "keyboard_control_key" : "expand_more"
                 horizontalAlignment: Text.AlignHCenter
-                color: root.trayOverflowOpen ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer2
+                color: root.trayOverflowOpen ? Appearance.colors.colOnSecondaryContainer : root.contentColor
                 rotation: (root.trayOverflowOpen ? 180 : 0) - (90 * root.vertical) + (180 * root.invertSide)
                 Behavior on rotation {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)

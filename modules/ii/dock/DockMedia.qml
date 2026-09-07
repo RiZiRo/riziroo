@@ -21,7 +21,8 @@ Item {
 
     property var player: MprisController.activePlayer
 
-    property var    artUrl:      player?.trackArtUrl ?? ""
+    // The best art this player has offered for this track, not merely the latest one it published
+    property var    artUrl:      MediaArt.urlFor(player)
     property string trackTitle:  player?.trackTitle  ?? ""
     property string trackArtist: player?.trackArtist ?? ""
     property bool   isPlaying:   player?.isPlaying   ?? false
@@ -134,10 +135,13 @@ Item {
             }
         }
 
-        // Overlay
+        // Overlay. Kept sheer on purpose so the blurred cover art -- i.e. the
+        // track's own color -- punches through instead of being buried under
+        // the layer color. Text/buttons still use the adapted scheme colors,
+        // which are generated from the same art and stay readable on top.
         Rectangle {
             anchors.fill: parent
-            color: ColorUtils.transparentize(root.blendedColors.colLayer0, 0.3)
+            color: ColorUtils.transparentize(root.blendedColors.colLayer0, 0.55)
             z: 2
         }
 
@@ -228,7 +232,7 @@ Item {
                     colRipple: root.isPlaying
                         ? root.blendedColors.colPrimaryActive
                         : root.blendedColors.colSecondaryContainerActive
-                    downAction: () => root.player?.togglePlaying()
+                    downAction: () => MprisController.togglePlayer(root.player)
                     contentItem: MaterialSymbol {
                         anchors.centerIn: parent
                         horizontalAlignment: Text.AlignHCenter

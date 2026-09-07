@@ -512,7 +512,7 @@ ContentPage {
                         },
                         {
                             displayName: Translation.tr("Niri Like"),
-                            icon: "mobiledata_arrows",
+                            icon: "view_column",
                             value: "niri"
                         }
                     ]
@@ -1104,7 +1104,7 @@ ContentPage {
                 ConfigTextArea {
                     id: liveWallpapersPathField
                     Layout.fillWidth: true
-                    buttonIcon: "video_template"
+                    buttonIcon: "motion_photos_on"
                     text: Translation.tr("Live Wallpaper Folder")
                     placeholderText: Translation.tr("e.g., /home/user/Videos/Wallpapers")
                     fieldWidth: 300

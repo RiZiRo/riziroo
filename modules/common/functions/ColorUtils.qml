@@ -137,6 +137,18 @@ Singleton {
     }
 
     /**
+     * Keeps an accent color only while it stays on the same side of the light/dark
+     * divide as a known-readable foreground, otherwise falls back to that foreground.
+     *
+     * @param {string} preferred - The accent color to use when it reads well.
+     * @param {string} readable - A foreground already known to contrast with the background.
+     * @returns {Qt.rgba} `preferred` if it is safe to use, else `readable`.
+     */
+    function pickReadable(preferred, readable) {
+        return isDark(preferred) === isDark(readable) ? Qt.color(preferred) : Qt.color(readable);
+    }
+
+    /**
      * Clamps a value to the inclusive range [0, 1].
      *
      * @param {number} x - The value to clamp.

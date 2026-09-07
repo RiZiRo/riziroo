@@ -316,14 +316,14 @@ Item {
                             if (root.dragging) return
                             const entry = slotItem.appEntry
                             if (!entry || entry.toplevels.length === 0) {
-                                slotItem.deskEntry?.execute()
+                                AppLaunchFeedback.launch(slotItem.deskEntry)
                                 return
                             }
                             const next = (slotItem._lastFocused + 1) % entry.toplevels.length
                             slotItem._lastFocused = next
                             entry.toplevels[next].activate()
                         }
-                        middleClickAction: () => { slotItem.deskEntry?.execute() }
+                        middleClickAction: () => { AppLaunchFeedback.launch(slotItem.deskEntry) }
                         altAction:         () => { TaskbarApps.togglePin(slotItem.appId) }
 
                         contentItem: Item {
@@ -425,7 +425,7 @@ Item {
                             activeSlot.modelData.toplevels[next].activate()
                         }
                         middleClickAction: () => {
-                            DesktopEntries.heuristicLookup(activeSlot.modelData.appId)?.execute()
+                            AppLaunchFeedback.launch(DesktopEntries.heuristicLookup(activeSlot.modelData.appId))
                         }
                         altAction: () => {
                             TaskbarApps.togglePin(activeSlot.modelData.appId)

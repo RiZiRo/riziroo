@@ -38,6 +38,35 @@ Item {
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     readonly property var realPlayers: MprisController.players
+
+    // Keep the sidebar player list consistent with the media-controls panel.
+    function filterDuplicatePlayers(players) {
+        let filtered = [];
+        let used = new Set();
+
+        for (let i = 0; i < players.length; ++i) {
+            if (used.has(i)) continue;
+            const first = players[i];
+            let group = [i];
+
+            for (let j = i + 1; j < players.length; ++j) {
+                const candidate = players[j];
+                const sameTitle = first.trackTitle && candidate.trackTitle &&
+                    (first.trackTitle.includes(candidate.trackTitle) ||
+                     candidate.trackTitle.includes(first.trackTitle));
+                const samePosition = first.position - candidate.position <= 2 &&
+                    first.length - candidate.length <= 2;
+                if (sameTitle || samePosition) group.push(j);
+            }
+
+            let chosen = group.find(index => players[index].trackArtUrl && players[index].trackArtUrl.length > 0);
+            if (chosen === undefined) chosen = group[0];
+            filtered.push(players[chosen]);
+            group.forEach(index => used.add(index));
+        }
+        return filtered;
+    }
+
     readonly property var meaningfulPlayers: {
         const preferred = Config.options.bar.media.preferredPlayer.trim().toLowerCase()
         if (preferred.length === 0) return filterDuplicatePlayers(realPlayers)
