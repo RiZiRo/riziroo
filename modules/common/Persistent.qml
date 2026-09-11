@@ -68,6 +68,65 @@ Singleton {
                 property int tabIndex: 0
             }
 
+            property JsonObject typingTest: JsonObject {
+                property int schemaVersion: 3
+                property string mode: "words"
+                property int testLength: 100
+                property bool punctuation: false
+                property bool numbers: false
+                property bool zen: false
+                property string languageProfile: "english"
+                property string language: "english"
+                property string customText: ""
+                property string quoteLength: "all"
+                property string quoteSearch: ""
+                property bool showKeyboard: false
+                property string difficulty: "normal"
+                property string stopOnError: "off"
+                property string confidenceMode: "off"
+                property bool blindMode: false
+                property bool showLiveStats: false
+                property string caretStyle: "underline"
+                property string smoothCaret: "medium"
+                property string theme: "monkeyBlack"
+                property string themeName: "pure_black"
+                property string deleteOnError: "off"
+                property bool quickEnd: false
+                property bool resultSaving: true
+                property string quickRestart: "tab"
+                property string repeatQuotes: "off"
+                property bool freedomMode: false
+                property bool strictSpace: false
+                property string indicateTypos: "below"
+                property bool hideExtraLetters: false
+                property string minWpm: "off"
+                property int minWpmValue: 100
+                property string minAcc: "off"
+                property int minAccValue: 90
+                property string minBurst: "off"
+                property int minBurstValue: 100
+                property string timerStyle: "mini"
+                property string liveSpeedStyle: "off"
+                property string liveAccStyle: "off"
+                property string liveBurstStyle: "off"
+                property string paceCaret: "off"
+                property int paceCaretWpm: 100
+                property string paceCaretStyle: "line"
+                property string keyboardMode: "off"
+                property real keyboardScale: 1
+                property string keyboardLabels: "lowercase"
+                property string typedEffect: "keep"
+                property string readAhead: "off"
+                property string tapeMode: "off"
+                property string trainer: "off"
+                property bool customTheme: false
+                property string customThemeJson: ""
+                property real panelOpacity: 0.96
+                property bool showKeyTips: true
+                property bool capsLockWarning: true
+                property bool focusWarning: true
+            }
+
             property JsonObject sidebar: JsonObject {
                 property JsonObject bottomGroup: JsonObject {
                     property bool collapsed: false

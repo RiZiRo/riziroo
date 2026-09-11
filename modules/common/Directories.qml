@@ -38,6 +38,11 @@ Singleton {
     property string shellConfigName: "config.json"
     property string shellConfigPath: `${Directories.shellConfig}/${Directories.shellConfigName}`
 	property string todoPath: FileUtils.trimFileProtocol(`${Directories.state}/user/todo.json`)
+    property string typingTestHistoryDir: FileUtils.trimFileProtocol(`${Directories.state}/user`)
+    property string typingTestHistoryPath: `${Directories.typingTestHistoryDir}/typingTestHistory.json`
+    property string typingTestDataDir: `${Directories.typingTestHistoryDir}/typingTest`
+    property string typingTestIndexPath: `${Directories.typingTestDataDir}/index.json`
+    property string typingTestDetailsPath: `${Directories.typingTestDataDir}/details.json`
     property string islandFrecencyPath: FileUtils.trimFileProtocol(`${Directories.state}/user/island_frecency.json`)
 	property string notesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/notes.txt`)
     property string desktopNotesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/desktopnotes.txt`)
@@ -72,6 +77,8 @@ Singleton {
         Quickshell.execDetached(["bash", "-c", `rm -rf '${latexOutput}'; mkdir -p '${latexOutput}'`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${cliphistDecode}'; mkdir -p '${cliphistDecode}'`])
         Quickshell.execDetached(["mkdir", "-p", `${aiChats}`])
+        Quickshell.execDetached(["mkdir", "-p", `${typingTestHistoryDir}`])
+        Quickshell.execDetached(["mkdir", "-p", `${typingTestDataDir}`])
         Quickshell.execDetached(["mkdir", "-p", `${userActions}`])
         Quickshell.execDetached(["rm", "-rf", `${tempImages}`])
     }

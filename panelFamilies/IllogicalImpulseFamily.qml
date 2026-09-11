@@ -18,6 +18,7 @@ import qs.modules.ii.settings
 import qs.modules.ii.regionSelector
 import qs.modules.ii.screenCorners
 import qs.modules.ii.screenTranslator
+import qs.modules.ii.typingTest
 import qs.modules.ii.sessionScreen
 import qs.modules.ii.sidebarLeft
 import qs.modules.ii.sidebarRight
@@ -55,4 +56,5 @@ Scope {
     PanelLoader { component: DropShelfPanel {} }
     PanelLoader { component: NiriBackdrop {} }
     PanelLoader { component: ScreenFrame {} }
+    PanelLoader { component: TypingTest {} }
 }

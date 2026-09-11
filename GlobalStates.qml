@@ -33,6 +33,7 @@ Singleton {
     property bool sessionOpen: false
     property bool superDown: false
     property bool superReleaseMightTrigger: true
+    property bool typingTestOpen: false
     property bool wallpaperSelectorOpen: false
     property bool workspaceShowNumbers: false
     property string settingsPage: ""
