@@ -11,6 +11,10 @@ LazyLoader {
     property Item hoverTarget
     default property Item contentItem
     property real popupBackgroundMargin: 0
+    // 0 = solid panel (default), 1 = fully see-through. The blur that shows
+    // through a translucent popup is supplied by the `quickshell:popup` layer
+    // rules in ~/.config/hypr/custom/rules.lua - the same recipe as the dock.
+    property real popupTransparency: 0
     active: hoverTarget && hoverTarget.containsMouse
 
     readonly property bool barVertical: Config.options.bar.vertical
@@ -97,10 +101,13 @@ LazyLoader {
             implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
             implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
 
-            color: Appearance.colors.colLayer1Base
+            color: ColorUtils.transparentize(Appearance.colors.colLayer1Base, root.popupTransparency)
             radius: Appearance.rounding.normal + 4
-            border.width: 1
-            border.color: Appearance.colors.colLayer0Border
+            // No hairline on glass: at these alphas a border reads as a
+            // separate, less transparent outline around the panel - the same
+            // finding the dock's config documents.
+            border.width: root.popupTransparency > 0 ? 0 : 1
+            border.color: ColorUtils.transparentize(Appearance.colors.colLayer0Border, root.popupTransparency)
 
             // Reparent content here once the window is ready
             Component.onCompleted: {

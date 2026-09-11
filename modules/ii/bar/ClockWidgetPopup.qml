@@ -1,5 +1,6 @@
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import qs.services
 import QtQuick
 import QtQuick.Layouts
@@ -7,6 +8,12 @@ import QtQuick.Layouts
 StyledPopup {
     id: root
     property var today: new Date()
+    // Glass: translucent panel frosted by the compositor (layer rules in
+    // ~/.config/hypr/custom/rules.lua). Card fills are transparent: any fill
+    // stacks on the panel's own alpha and instantly reads as a second layer,
+    // so only the accent chip (today's tile, the checklist clover) keeps a
+    // tint. Raise/lower popupTransparency to tune how see-through it all is.
+    popupTransparency: 0.9
 
     function usageColor(value) {
         if (value > 0.9) return Appearance.colors.colError
@@ -62,8 +69,8 @@ StyledPopup {
                     height: 56
                     radius: Appearance.rounding.normal
                     color: isToday
-                        ? Appearance.colors.colPrimaryContainer
-                        : Appearance.colors.colSurfaceContainerHigh
+                        ? ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, root.popupTransparency * 0.6)
+                        : "transparent"
 
                     ColumnLayout {
                         anchors.centerIn: parent
@@ -108,7 +115,7 @@ StyledPopup {
                     text: "checklist"
                     iconSize: Appearance.font.pixelSize.large
                     implicitSize: 36
-                    color: Appearance.colors.colPrimaryContainer
+                    color: ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, root.popupTransparency * 0.6)
                     colSymbol: Appearance.colors.colPrimary
                 }
 
@@ -145,7 +152,9 @@ StyledPopup {
                         topRightRadius:    isFirst ? bigRadius : smallRadius
                         bottomLeftRadius:  isLast  ? bigRadius : smallRadius
                         bottomRightRadius: isLast  ? bigRadius : smallRadius
-                        color: Appearance.colors.colSurfaceContainerHigh
+                        // Transparent: a filled row would stack on the panel
+                        // fill and read as a separate gray layer on the glass.
+                        color: "transparent"
 
                         StyledText {
                             anchors {
@@ -168,7 +177,7 @@ StyledPopup {
                     height: 64
                     visible: Todo.list.filter(t => !t.done).length === 0
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colSurfaceContainerHigh
+                    color: "transparent"
 
                     StyledText {
                         anchors.centerIn: parent

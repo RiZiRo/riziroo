@@ -60,7 +60,7 @@ Item {
     // its own bounds on hover without any of it looping back.
     property real animatedWidth: root.targetWidth
     Behavior on animatedWidth {
-        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
     }
 
     // 0 at rest, 1 when hovered: closes the gap to the outer pill on all four sides at once.
@@ -217,7 +217,7 @@ Item {
         Item {
             id: islandBg
             anchors.fill: parent
-            visible: root.mediaBgActive
+            visible: root.mediaBgActive && !root.expanded
             layer.enabled: true
             layer.effect: OpacityMask {
                 maskSource: Rectangle {
@@ -459,10 +459,28 @@ Item {
             // middle layout doesn't cost anything. Suppressed while expanded -- a tooltip over
             // the search field would be in the way -- and while a swipe is in progress, where a
             // calendar hanging off the pill is just in the way of the gesture.
+            // The collapse grace matters: the dashboard and the popup are separate layer
+            // windows, and the compositor keeps fading the dashboard out for a moment after
+            // the island collapses. An instant hover re-open stacks the two translucent
+            // surfaces and ghosts them together on screen.
             ClockWidgetPopup {
                 hoverTarget: mouseArea
                 today: root.today
-                active: mouseArea.containsMouse && !root.expanded && !mouseArea.dragActive && !Config.options.bar.tooltips.clickToShow
+                active: mouseArea.containsMouse && !root.expanded && !mouseArea.dragActive
+                    && !collapseGrace.running && !Config.options.bar.tooltips.clickToShow
+            }
+
+            Timer {
+                id: collapseGrace
+                interval: 450
+            }
+
+            Connections {
+                target: root
+                function onExpandedChanged() {
+                    if (!root.expanded)
+                        collapseGrace.restart();
+                }
             }
         }
 
