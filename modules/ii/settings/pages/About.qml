@@ -15,36 +15,69 @@ ContentPage {
     property bool isMinimal: Config.options.settings.style === "minimal"
 
     function runSystemUpdate() {
-        Quickshell.execDetached([
-            "kitty", "--hold",
-            "fish", "-i", "-l", "-c",
-            "yay -Syu --combinedupgrade=false"
-        ])
+        // The upstream this forked from is Arch-only; pick whatever the running
+        // distro actually has so the button is not dead on Fedora.
+        const updateScript = `
+            if command -v dnf >/dev/null 2>&1; then
+                exec sudo dnf upgrade
+            elif command -v paru >/dev/null 2>&1; then
+                exec paru -Syu --combinedupgrade=false
+            elif command -v yay >/dev/null 2>&1; then
+                exec yay -Syu --combinedupgrade=false
+            elif command -v pacman >/dev/null 2>&1; then
+                exec sudo pacman -Syu
+            else
+                echo "No supported package manager found (dnf, paru, yay, pacman)."
+                exit 1
+            fi
+        `
+
+        Quickshell.execDetached(["kitty", "--hold", "bash", "-c", updateScript])
         Qt.callLater(() => GlobalStates.settingsOpen = false)
     }
 
     function runUpdateDots() {
+        // Updates in place with a pull. The version this forked from cloned
+        // upstream into a temp directory, moved the live config aside and then
+        // deleted it, which threw away .git along with every local commit and
+        // any uncommitted edit. Pulling keeps the checkout and its history.
         const updateScript = `
-            set -e
-            DIR="$HOME/.config/quickshell"
+            DIR="$HOME/.config/quickshell/end4-pC"
 
-            # Download to temp first
-            rm -rf "$DIR/end4-pC-tmp"
-            git clone https://github.com/pctrade/end4-pC.git "$DIR/end4-pC-tmp"
+            if ! git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
+                echo "$DIR is not a git checkout, so there is nothing to pull."
+                echo "Clone it instead:"
+                echo "  git clone https://github.com/RiZiRo/riziroo.git \\"$DIR\\""
+                exit 1
+            fi
 
-            # Apply update
-            rm -rf "$DIR/end4-pC-old"
-            [ -d "$DIR/end4-pC" ] && mv "$DIR/end4-pC" "$DIR/end4-pC-old"
-            mv "$DIR/end4-pC-tmp" "$DIR/end4-pC"
+            # An update that silently discards your edits is worse than one that
+            # refuses to run.
+            if ! git -C "$DIR" diff --quiet || ! git -C "$DIR" diff --cached --quiet; then
+                echo "There are uncommitted changes in $DIR."
+                echo "Commit or stash them, then update again."
+                echo
+                git -C "$DIR" status --short
+                exit 1
+            fi
 
-            # Reload
-            killall qs 2>/dev/null || true
-            sleep 0.5
-            setsid qs -c end4-pC >/tmp/qs.log 2>&1 < /dev/null &
-            disown
+            git -C "$DIR" pull --ff-only || {
+                echo
+                echo "Pull was not a fast-forward, so nothing was changed."
+                echo "Reconcile the branches by hand and try again."
+                exit 1
+            }
 
-            # Cleanup
-            rm -rf "$DIR/end4-pC-old"
+            # The supervisor restarts the shell on its own, so killing it is
+            # enough. Without one, start it directly.
+            if pgrep -f start-end4-pC >/dev/null 2>&1; then
+                killall qs 2>/dev/null || true
+            else
+                killall qs 2>/dev/null || true
+                sleep 0.5
+                setsid qs -c end4-pC >/tmp/qs.log 2>&1 < /dev/null &
+                disown
+            fi
         `
 
         Quickshell.execDetached(["kitty", "--hold", "bash", "-c", updateScript])
