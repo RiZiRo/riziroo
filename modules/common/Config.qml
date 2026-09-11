@@ -229,6 +229,8 @@ Singleton {
                 property string splitSide: "left"
                 property bool showSnapLines: true
                 property JsonObject widgets: JsonObject {
+                    property bool blurWidgets: false
+                    property real blurRadius: 32
                     property JsonObject clock: JsonObject {
                         property bool enable: true
                         property bool showOnlyWhenLocked: false
@@ -819,6 +821,10 @@ Singleton {
                 property JsonObject media: JsonObject {
                     property bool enable: true
                     property bool artColors: false
+                    property string artShape: "Oval"
+                    property bool showLyrics: true
+                    property bool shapeArt: false
+                    property bool blurredBackground: false
                 }
                 
                 property JsonObject ai: JsonObject {

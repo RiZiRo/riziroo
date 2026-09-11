@@ -74,7 +74,7 @@ Item {
         }
         color: root.effectiveBgColor
 
-        border.width: root.isSegmented ? 1 : 0
+        border.width: root.isSegmented && !root.isMaterial ? 1 : 0
         border.color: Appearance.colors.colLayer0Border
 
         topLeftRadius: (root.isMaterial && root.paintMaterialPill) ? root.fullRadius : (Config.options?.bar.borderless === "separated" ? root.fullRadius : root.startRadius)

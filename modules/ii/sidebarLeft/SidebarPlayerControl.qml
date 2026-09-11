@@ -15,10 +15,11 @@ import Quickshell.Services.Mpris
 
 Item {
     id: root
-    property var player: Mpris.players.values[playerSelector.currentIndex] ?? Mpris.players.values[0]
+    property var player: Mpris.players.values[root.currentPlayerIndex] ?? Mpris.players.values[0]
     // The best art this player has offered for this track, not merely the latest one it published
     property var artUrl: MediaArt.urlFor(player)
     property string artDownloadLocation: Directories.coverArt
+    property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
     property string artFileName: Qt.md5(artUrl)
     property string artFilePath: `${artDownloadLocation}/${artFileName}`
     property color artDominantColor: Config.options.sidebar.media.artColors
@@ -33,6 +34,10 @@ Item {
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
     property real radius
+    property int currentPlayerIndex: 0
+    property bool blurredBackground: Config.options.sidebar.media.blurredBackground ?? false
+    property bool shapeArt: Config.options.sidebar.media.shapeArt ?? false
+    readonly property var artShapeOptions: ["Circle", "Square", "Pill", "Bun", "Cookie12Sided", "Clover4Leaf", "Heart", "Slanted", "Arch", "Arrow", "SemiCircle", "Oval", "Triangle", "Diamond", "ClamShell", "Pentagon", "Gem", "Sunny", "VerySunny", "Cookie4Sided", "Cookie6Sided", "Cookie7Sided", "Cookie9Sided", "Ghostish", "Clover8Leaf", "Burst", "SoftBurst", "Boom", "SoftBoom", "Flower", "Puffy", "PuffyDiamond"]
 
     property string displayedArtFilePath: {
         // Already a local snapshot, so there is nothing left to fetch
@@ -93,6 +98,35 @@ Item {
         anchors.bottomMargin: 4
         color: ColorUtils.transparentize(artDominantColor, 0.9)
         radius: Appearance.rounding.normal
+        clip: true
+
+        Image {
+            id: blurArtSource
+            anchors.fill: parent
+            source: root.displayedArtFilePath
+            fillMode: Image.PreserveAspectCrop
+            cache: false
+            asynchronous: true
+            visible: false
+        }
+
+        FastBlur {
+            id: blurArt
+            anchors.fill: parent
+            source: blurArtSource
+            radius: 80
+            opacity: 0.5
+            visible: root.blurredBackground && root.displayedArtFilePath !== ""
+
+            layer.enabled: blurArt.visible
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: blurArt.width
+                    height: blurArt.height
+                    radius: background.radius
+                }
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -100,28 +134,31 @@ Item {
             spacing: 0
 
             // ── Album art ──
-            // Host for the art plus the sync pill floating over it. The pill is a sibling rather
-            // than a child of artBackground because that rectangle's rounded-corner mask would
-            // clip it to the art's bounds as soon as it expands. Raised above the lyrics below so
-            // the expanded pill draws over them instead of behind their clickable lines.
             Item {
+                id: artBackground
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Math.min(parent.width * 1, parent.height * 0.45)
                 Layout.preferredHeight: Layout.preferredWidth
+                // Raised above the lyrics below so the expanded sync pill draws over them
+                // instead of behind their clickable lines.
                 z: 1
 
+                property bool useShape: root.shapeArt && (Config.options.sidebar.media.artShape ?? "Rectangle") !== "Rectangle"
+                property int materialShape: ShapeUtils.getShape(Config.options.sidebar.media.artShape)
+
                 Rectangle {
-                    id: artBackground
+                    id: artRect
                     anchors.fill: parent
+                    visible: !artBackground.useShape
                     radius: Appearance.rounding.normal
                     color: Appearance.colors.colPrimaryContainer
 
-                    layer.enabled: true
+                    layer.enabled: !artBackground.useShape
                     layer.effect: OpacityMask {
                         maskSource: Rectangle {
-                            width: artBackground.width
-                            height: artBackground.height
-                            radius: artBackground.radius
+                            width: artRect.width
+                            height: artRect.height
+                            radius: artRect.radius
                         }
                     }
 
@@ -134,33 +171,63 @@ Item {
                         sourceSize.width: artBackground.width * 2
                         sourceSize.height: artBackground.height * 2
                     }
+                }
 
-                    MaterialSymbol {
-                        visible: MprisController.activePlayer === null
-                        anchors.centerIn: parent
-                        fill: 1
-                        text: "music_note"
-                        color: Appearance.colors.colPrimary
-                        iconSize: Appearance.font.pixelSize.hugeass + 100
+                MaterialShape {
+                    id: artShapeItem
+                    anchors.fill: parent
+                    visible: artBackground.useShape
+                    shape: artBackground.materialShape
+                    color: Appearance.colors.colPrimaryContainer
+
+                    layer.enabled: artBackground.useShape
+                    layer.effect: OpacityMask {
+                        maskSource: MaterialShape {
+                            width: artShapeItem.width
+                            height: artShapeItem.height
+                            shape: artBackground.materialShape
+                        }
                     }
 
-                    // The cover doubles as the switch between the lyric views: karaoke sweep, line by
-                    // line, then the plain text of the song
-                    MouseArea {
-                        id: artClickArea
+                    StyledImage {
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: LyricsService.cycleMode()
-
-                        StyledToolTip {
-                            extraVisibleCondition: false
-                            alternativeVisibleCondition: artClickArea.containsMouse
-                            text: LyricsService.modeDescription
-                        }
+                        source: root.displayedArtFilePath
+                        fillMode: Image.PreserveAspectCrop
+                        cache: false
+                        antialiasing: true
+                        sourceSize.width: artBackground.width * 2
+                        sourceSize.height: artBackground.height * 2
                     }
                 }
 
+                MaterialSymbol {
+                    visible: MprisController.activePlayer === null
+                    anchors.centerIn: parent
+                    fill: 1
+                    text: "music_note"
+                    color: Appearance.colors.colPrimary
+                    iconSize: Appearance.font.pixelSize.hugeass + 100
+                }
+
+                // The cover doubles as the switch between the lyric views: karaoke sweep, line by
+                // line, then the plain text of the song. Anchored to the host item rather than to
+                // either art variant so it covers both the rectangular and the shaped art.
+                MouseArea {
+                    id: artClickArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: LyricsService.cycleMode()
+
+                    StyledToolTip {
+                        extraVisibleCondition: false
+                        alternativeVisibleCondition: artClickArea.containsMouse
+                        text: LyricsService.modeDescription
+                    }
+                }
+
+                // A sibling of the art rather than a child of it: the art's rounded-corner and
+                // shape masks would clip the pill to the cover's bounds as soon as it expands.
                 LyricsSyncPill {
                     anchors.top: parent.top
                     anchors.left: parent.left
@@ -230,23 +297,44 @@ Item {
             }
 
             // ── Lyrics ──
-            Lyrics {
-                id: lyricsComp
-                opacity: MprisController.activePlayer !== null ? 1 : 0 
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                textAlignment: Text.AlignHCenter
-                textColor: blendedColors.colOnLayer0
-                activeColor: blendedColors.colPrimary
-                dimColor: blendedColors.colSubtext
-                indicatorColor: {
-                    let c = blendedColors.colPrimaryContainer
-                    return (c && c != "#000000" && c != "transparent") ? c : root.artDominantColor
+
+                Lyrics {
+                    id: lyricsComp
+                    anchors.fill: parent
+                    opacity: (MprisController.activePlayer !== null && Config.options.sidebar.media.showLyrics) ? 1 : 0
+                    textAlignment: Text.AlignHCenter
+                    textColor: blendedColors.colOnLayer0
+                    activeColor: blendedColors.colPrimary
+                    dimColor: blendedColors.colSubtext
+                    indicatorColor: {
+                        let c = blendedColors.colPrimaryContainer
+                        return (c && c != "#000000" && c != "transparent") ? c : root.artDominantColor
+                    }
+                    indicatorShapeColor: {
+                        let c = blendedColors.colOnPrimaryContainer
+                        if (c && c != "#000000" && c != "#ffffff" && c != "transparent") return c
+                        return blendedColors.colPrimary || Appearance.colors.colPrimary
+                    }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
                 }
-                indicatorShapeColor: {
-                    let c = blendedColors.colOnPrimaryContainer
-                    if (c && c != "#000000" && c != "#ffffff" && c != "transparent") return c
-                    return blendedColors.colPrimary || Appearance.colors.colPrimary
+
+                Loader {
+                    anchors.fill: parent
+                    active: !Config.options.sidebar.media.showLyrics
+                    opacity: active ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                    sourceComponent: Visualizer {
+                        vertical: false
+                        mirrored: false
+                        barCount: 32
+                        dotSize: 5
+                        dotSpacing: 6
+                        maxBarHeight: parent.height * 0.8
+                    }
                 }
             }
 
@@ -395,11 +483,31 @@ Item {
                 }
             }
 
-            // ── Volume ──
+            // ── Lyrics toggle Volume & settings  ──
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 20
                 spacing: 8
+
+                RippleButton {
+                    property real baseSize: Math.max(36, parent.parent.height * 0.05)
+                    implicitWidth: baseSize
+                    implicitHeight: baseSize
+                    buttonRadius: Appearance.rounding.large
+                    colBackground: ColorUtils.transparentize(blendedColors.colSecondaryContainer, 0.7)
+                    colBackgroundHover: blendedColors.colSecondaryContainerHover
+                    colRipple: blendedColors.colSecondaryContainerActive
+                    downAction: () => {
+                        Config.options.sidebar.media.showLyrics = !Config.options.sidebar.media.showLyrics
+                    }
+                    contentItem: MaterialSymbol {
+                        iconSize: 18
+                        fill: Config.options.sidebar.media.showLyrics ? 1 : 0
+                        horizontalAlignment: Text.AlignHCenter
+                        color: blendedColors.colOnSecondaryContainer
+                        text: "lyrics"
+                    }
+                }
 
                 RippleButton {
                     property real baseSize: Math.max(36, parent.parent.height * 0.05)
@@ -460,6 +568,77 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         color: blendedColors.colOnSecondaryContainer
                         text: "volume_up"
+                    }
+                }
+
+                RippleButton {
+                    id: moreButton
+                    property real baseSize: Math.max(36, parent.parent.height * 0.05)
+                    implicitWidth: baseSize
+                    implicitHeight: baseSize
+                    buttonRadius: Appearance.rounding.large
+                    colBackground: ColorUtils.transparentize(blendedColors.colSecondaryContainer, 0.7)
+                    colBackgroundHover: blendedColors.colSecondaryContainerHover
+                    colRipple: blendedColors.colSecondaryContainerActive
+                    downAction: () => menuPopup.open()
+                    contentItem: MaterialSymbol {
+                        iconSize: 18
+                        fill: 1
+                        horizontalAlignment: Text.AlignHCenter
+                        color: blendedColors.colOnSecondaryContainer
+                        text: "more_vert"
+                    }
+
+                    Popup {
+                        id: menuPopup
+                        y: -implicitHeight - 8
+                        x: moreButton.width - implicitWidth
+                        width: 210
+                        padding: 16
+                        modal: true
+                        dim: false
+                        closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
+
+                        background: Rectangle {
+                            color: Appearance.colors.colLayer0
+                            radius: Appearance.rounding.verylarge
+                        }
+
+                        contentItem: ColumnLayout {
+                            width: menuPopup.width
+                            spacing: 10
+
+                            ConfigSwitch {
+                                buttonIcon: "shape_line"
+                                text: Translation.tr("Shape Art")
+                                checked: Config.options.sidebar.media.shapeArt
+                                onCheckedChanged: { Config.options.sidebar.media.shapeArt = checked }
+                            }
+
+                            ConfigSelectionShapeArray {
+                                Layout.fillWidth: true
+                                visible: Config.options.sidebar.media.shapeArt
+                                currentValue: Config.options.sidebar.media.artShape
+                                shapeColor: Appearance.colors.colPrimary
+                                backgroundColor: Appearance.colors.colPrimaryContainer
+                                options: root.artShapeOptions
+                                onSelected: newValue => Config.options.sidebar.media.artShape = newValue
+                            }
+
+                            ConfigSwitch {
+                                buttonIcon: "radio_button_partial"
+                                text: Translation.tr("Art Colors")
+                                checked: Config.options.sidebar.media.artColors
+                                onCheckedChanged: { Config.options.sidebar.media.artColors = checked }
+                            }
+
+                            ConfigSwitch {
+                                buttonIcon: "blur_on"
+                                text: Translation.tr("Blurred Art")
+                                checked: Config.options.sidebar.media.blurredBackground
+                                onCheckedChanged: { Config.options.sidebar.media.blurredBackground = checked }
+                            }
+                        }
                     }
                 }
             }

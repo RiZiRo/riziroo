@@ -6,6 +6,7 @@ import qs.modules.ii.background
 import qs.modules.ii.bar
 import qs.modules.ii.cheatsheet
 import qs.modules.ii.dock
+import qs.modules.ii.equalizer
 import qs.modules.ii.lock
 import qs.modules.ii.launchFeedback
 import qs.modules.ii.mediaControls
@@ -34,6 +35,7 @@ Scope {
     PanelLoader { component: Background {} }
     PanelLoader { component: Cheatsheet {} }
     PanelLoader { extraCondition: Config.options.dock.enable; component: Dock {} }
+    PanelLoader { component: EqualizerPopup {} }
     PanelLoader { extraCondition: Config.options.launchFeedback.enable; component: LaunchFeedback {} }
     PanelLoader { component: Lock {} }
     PanelLoader { component: MediaControls {} }

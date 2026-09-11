@@ -63,18 +63,21 @@ if [ "$action" = "--import-zip" ]; then
         python3 -c "import zipfile, sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$zip_path" "$tmpdir"
     fi
     # Find json (first *.json not meta.json)
-    json_file=$(find "$tmpdir" -maxdepth 2 -name "*.json" ! -name "meta.json" | head -n1)
+    json_file=$(find "$tmpdir" -maxdepth 4 -name "*.json" ! -name "meta.json" | head -n1)
     if [ -z "$json_file" ]; then
         echo "Error: no preset json in zip" >&2
         exit 1
     fi
     base=$(basename "$json_file" .json)
-    # Collect asset filenames in zip (images etc, exclude json/meta)
-    asset_files=$(find "$tmpdir" -maxdepth 1 -type f ! -name "*.json" ! -name "meta.json" -exec basename {} \; | jq -R . | jq -s .)
+    # Collect assets from the same folder as the json (images etc, exclude json/meta).
+    # Anchoring to the json dir (instead of the zip root) supports flat zips as well
+    # as folder-wrapped ones (e.g. Blapples' assets/ layout).
+    json_dir=$(dirname "$json_file")
+    asset_files=$(find "$json_dir" -maxdepth 1 -type f ! -name "*.json" ! -name "meta.json" -exec basename {} \; | jq -R . | jq -s .)
     asset_cache="$IMPORTED_PRESETS_DIR/assets/$base"
     mkdir -p "$asset_cache"
     # Copy assets to cache (plug-and-play like online presets)
-    find "$tmpdir" -maxdepth 1 -type f ! -name "*.json" ! -name "meta.json" -exec cp -L {} "$asset_cache/" \; 2>/dev/null || true
+    find "$json_dir" -maxdepth 1 -type f ! -name "*.json" ! -name "meta.json" -exec cp -L {} "$asset_cache/" \; 2>/dev/null || true
     # Rewrite json paths to point to cached assets (reuse online jqFilter Profile.qml:250)
     jq --arg dir "$asset_cache" --argjson files "$asset_files" '
       $files as $files | walk(if type == "string" then ((split("/") | last) as $base | if ($files | index($base)) then ($dir + "/" + $base) else . end) else . end)

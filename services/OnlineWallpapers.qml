@@ -9,9 +9,10 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    property string provider:   "wallhaven"  // "wallhaven" | "unsplash" | "pexels" | "blapples"
+    property string provider:   "wallhaven"  // "wallhaven" | "unsplash" | "pexels" | "blapples" | "naive"
     property string resolution: "1080p"      // "1080p" | "2K" | "4K"
     property string query:      ""           // empty keyword = random
+    property string colorGroup: ""           // naive: "" = all | "red"|"orange"|"yellow"|"green"|"blue"|"purple"
     property string category:   "general"    // wallhaven: "general"|"anime"|"people" / unsplash: "nature"|"city"|...
     property string purity:     "sfw"        // wallhaven: "sfw"|"sketchy"|"nsfw"
     property bool   loading:    false
@@ -20,6 +21,10 @@ Singleton {
     property string seed:       ""          
     property var    results:    []           // list [ {thumb, full, id, provider} ]
     property int totalPages: 0
+
+    property var _naiveFullResults: []
+    property var _blapplesFullResults: []
+    property int localPageSize: 24
 
     signal fetched()
     signal fetchError(string message)
@@ -30,10 +35,14 @@ Singleton {
     readonly property string pexelsApiKey: KeyringStorage.keyringData?.apiKeys?.pexels ?? ""
 
     // ─── Blapples ───
-    readonly property string blapplesRepo: "https://api.github.com/repos/Blapples/wallpapers/contents/?ref=main"
-    readonly property string blapplesPreviewProxy: "https://wsrv.nl/"
-    readonly property int blapplesPreviewWidth: 960
-    readonly property int blapplesPreviewQuality: 72
+    readonly property string blapplesJsonUrl: "https://raw.githubusercontent.com/Blapples/wallpapers/main/wallpapers.json"
+    readonly property string blapplesPagesBase: "https://raw.githubusercontent.com/Blapples/wallpapers/main/"
+    readonly property string blapplesFullBase: "https://raw.githubusercontent.com/Blapples/wallpapers/main/"
+
+    // ─── NA-ive ───
+    readonly property string naiveJsonUrl: "https://raw.githubusercontent.com/na-ive/wallpapers/gh-pages/wallpapers.json"
+    readonly property string naivePagesBase: "https://raw.githubusercontent.com/na-ive/wallpapers/gh-pages/"
+    readonly property string naiveFullBase: "https://raw.githubusercontent.com/na-ive/wallpapers/main/"
 
     // ─── Resolution ───
     readonly property var resolutionMap: ({
@@ -72,6 +81,17 @@ Singleton {
 
     function nextPage() {
         if (root.loading) return;
+
+        if (root.provider === "naive" || root.provider === "blapples") {
+            const full = root.provider === "naive" ? root._naiveFullResults : root._blapplesFullResults;
+            if (root.page * root.localPageSize >= full.length) return;
+            root.page += 1;
+            root.appending = true;
+            root.results = full.slice(0, root.page * root.localPageSize);
+            root.fetched();
+            return;
+        }
+
         if (root.provider !== "unsplash" && root.totalPages > 0 && root.page >= root.totalPages) return;  // NUEVO: no pedir de más
         root.appending = true;   
         root.page += 1;
@@ -80,6 +100,15 @@ Singleton {
 
     function prevPage() {
         if (root.loading || root.page <= 1) return;
+
+        if (root.provider === "naive" || root.provider === "blapples") {
+            const full = root.provider === "naive" ? root._naiveFullResults : root._blapplesFullResults;
+            root.page -= 1;
+            root.appending = false;
+            root.results = full.slice(0, root.page * root.localPageSize);
+            return;
+        }
+
         root.page -= 1;
         _doFetch();
     }
@@ -94,11 +123,21 @@ Singleton {
             _fetchPexels();
         } else if (root.provider === "blapples") {
             _fetchBlapples();
+        } else if (root.provider === "naive") {
+            _fetchNaive();
         }
     }
 
     function goToPage(n) {
         root.page = n;
+
+        if (root.provider === "naive" || root.provider === "blapples") {
+            const full = root.provider === "naive" ? root._naiveFullResults : root._blapplesFullResults;
+            root.appending = false;
+            root.results = full.slice(0, root.page * root.localPageSize);
+            return;
+        }
+
         _doFetch();
     }
 
@@ -139,7 +178,13 @@ Singleton {
 
     function _fetchBlapples() {
         fetchProc.provider = "blapples";
-        fetchProc.command = ["curl", "-s", "-H", "Accept: application/vnd.github+json", root.blapplesRepo];
+        fetchProc.command = ["curl", "-sL", root.blapplesJsonUrl];
+        fetchProc.running = true;
+    }
+
+    function _fetchNaive() {
+        fetchProc.provider = "naive";
+        fetchProc.command = ["curl", "-sL", root.naiveJsonUrl];
         fetchProc.running = true;
     }
 
@@ -231,34 +276,86 @@ Singleton {
     function _parseBlapples(jsonStr) {
         try {
             const data = JSON.parse(jsonStr);
-            if (!Array.isArray(data)) throw new Error("Unexpected GitHub API response");
+            if (!Array.isArray(data)) throw new Error("Unexpected wallpapers.json response");
 
-            const imageExt = /\.(png|jpe?g|webp|gif)$/i;
+            const q = root.query.trim().toLowerCase();
+            const cg = root.colorGroup.trim().toLowerCase();
             const newItems = data
-                .filter(f => f.type === "file" && imageExt.test(f.name))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map(f => {
-                    const baseName = f.name.replace(/\.[^.]+$/, "");
+                .filter(item => item && item.filename)
+                .filter(item => q.length === 0 || String(item.filename).toLowerCase().includes(q))
+                .filter(item => cg.length === 0 || ((item.color_groups ?? []).map(g => String(g).toLowerCase()).includes(cg)))
+                .map(item => {
+                    const filename = String(item.filename);
+                    const baseName = filename.replace(/\.[^.]+$/, "");
+                    const dims = String(item.resolution ?? "").split("x");
+                    const w = parseInt(dims[0], 10) || 0;
+                    const h = parseInt(dims[1], 10) || 0;
                     return {
                         id:               baseName,
-                        thumb:            `${root.blapplesPreviewProxy}?url=${encodeURIComponent(f.download_url)}&w=${root.blapplesPreviewWidth}&q=${root.blapplesPreviewQuality}&fit=inside&output=webp`,
-                        full:             f.download_url,
+                        thumb:            root.blapplesPagesBase + String(item.thumbnail ?? item.preview ?? filename).split("/").map(encodeURIComponent).join("/"),
+                        full:             root.blapplesFullBase + filename.split("/").map(encodeURIComponent).join("/"),
                         provider:         "blapples",
                         title:            baseName.replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
                         author:           "",
                         authorUrl:        "",
                         likes:            0,
-                        width:            0,
-                        height:           0,
+                        width:            w,
+                        height:           h,
+                        avgColor:         item.color ?? "",
+                        colorGroups:      (item.color_groups ?? []).map(g => String(g).toLowerCase()),
                         downloadLocation: "",
                     };
                 });
 
-            root.totalPages = 1;
-            root.results = root.appending ? root.results.concat(newItems) : newItems;
+            root._blapplesFullResults = newItems;
+            root.totalPages = Math.max(1, Math.ceil(newItems.length / root.localPageSize));
+            root.results = newItems.slice(0, root.localPageSize);
             root.fetched();
         } catch (e) {
             root.fetchError("Blapples parse error: " + e);
+        }
+    }
+
+    function _parseNaive(jsonStr) {
+        try {
+            const data = JSON.parse(jsonStr);
+            if (!Array.isArray(data)) throw new Error("Unexpected wallpapers.json response");
+
+            const q = root.query.trim().toLowerCase();
+            const cg = root.colorGroup.trim().toLowerCase();
+            const newItems = data
+                .filter(item => item && item.filename)
+                .filter(item => q.length === 0 || String(item.filename).toLowerCase().includes(q))
+                .filter(item => cg.length === 0 || ((item.color_groups ?? []).map(g => String(g).toLowerCase()).includes(cg)))
+                .map(item => {
+                    const filename = String(item.filename);
+                    const baseName = filename.replace(/\.[^.]+$/, "");
+                    const dims = String(item.resolution ?? "").split("x");
+                    const w = parseInt(dims[0], 10) || 0;
+                    const h = parseInt(dims[1], 10) || 0;
+                    return {
+                        id:               baseName,
+                        thumb:            root.naivePagesBase + String(item.thumbnail ?? item.preview ?? filename),
+                        full:             root.naiveFullBase + encodeURIComponent(filename),
+                        provider:         "naive",
+                        title:            baseName.replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+                        author:           "",
+                        authorUrl:        "",
+                        likes:            0,
+                        width:            w,
+                        height:           h,
+                        avgColor:         item.color ?? "",
+                        colorGroups:      item.color_groups ?? [],
+                        downloadLocation: "",
+                    };
+                });
+
+            root._naiveFullResults = newItems;
+            root.totalPages = Math.max(1, Math.ceil(newItems.length / root.localPageSize));
+            root.results = newItems.slice(0, root.localPageSize);
+            root.fetched();
+        } catch (e) {
+            root.fetchError("NA-ive parse error: " + e);
         }
     }
 
@@ -292,6 +389,8 @@ Singleton {
                 root._parsePexels(fetchProc.buffer);
             } else if (fetchProc.provider === "blapples") {
                 root._parseBlapples(fetchProc.buffer);
+            } else if (fetchProc.provider === "naive") {
+                root._parseNaive(fetchProc.buffer);
             }
         }
     }

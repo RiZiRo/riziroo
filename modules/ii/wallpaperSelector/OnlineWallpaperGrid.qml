@@ -13,6 +13,7 @@ Item {
 
     property string provider: "wallhaven"
     property string resolution: "1080p"
+    property string colorGroup: ""
     property int columns: Config.options.wallpaperSelector.columns || 4
     property real previewCellAspectRatio: 4 / 3
     property var hoveredItem: null
@@ -32,11 +33,13 @@ Item {
 
     onProviderChanged:   { root.hoveredItem = null; _syncAndFetch() }
     onResolutionChanged: _syncAndFetch()
+    onColorGroupChanged: { if (root.provider === "naive" || root.provider === "blapples") _syncAndFetch() }
 
     function _syncAndFetch() {
         if (root.missingKey) return
         OnlineWallpapers.provider   = root.provider
         OnlineWallpapers.resolution = root.resolution
+        OnlineWallpapers.colorGroup = root.colorGroup
         OnlineWallpapers.fetch()
     }
 
@@ -236,7 +239,7 @@ Item {
                             ? Qt.rgba(
                                 Appearance.colors.colPrimary.r,
                                 Appearance.colors.colPrimary.g,
-                                Appearance.colors.colPrimary.b, 0.35)
+                                Appearance.colors.colPrimary.b, 0.15)
                             : "transparent"
                         border.width: delegateItem.index === grid.currentIndex ? 2 : 0
                         border.color: Appearance.colors.colPrimary
