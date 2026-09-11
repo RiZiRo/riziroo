@@ -1,0 +1,9 @@
+# Python bytecode from the helper scripts (scripts/lyrics, scripts/ai, ...)
+__pycache__/
+*.py[cod]
+
+# Timestamped backups left behind by in-place edits
+*.bak-*
+
+# Knowledge-graph output, regenerated on demand
+graphify-out/
