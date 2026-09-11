@@ -98,50 +98,66 @@ Item {
                 }
             }
 
-            Rectangle {
+            // Host for the art plus the sync pill floating over it. The pill is a sibling rather
+            // than a child of the art rectangle because its clip would cut the pill off at the
+            // art's bounds as soon as it expands. Raised above the lyrics beside it so the expanded
+            // pill draws over them instead of behind their clickable lines.
+            Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 132
                 Layout.preferredHeight: 132
-                color: "transparent"
-                radius: 12
-                clip: true
+                z: 1
 
-                StyledImage {
-                    id: mediaArt
+                Rectangle {
                     anchors.fill: parent
-                    source: root.displayedArtFilePath
-                    visible: status === Image.Ready
-                    fillMode: Image.PreserveAspectCrop
-                    cache: false
-                    antialiasing: true
-                    smooth: true
-                    mipmap: true
-                    sourceSize.width: 264
-                    sourceSize.height: 264
-                }
+                    color: "transparent"
+                    radius: 12
+                    clip: true
 
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    visible: root.displayedArtFilePath === "" || mediaArt.status !== Image.Ready
-                    text: "music_note"
-                    iconSize: 42
-                    fill: 1
-                    color: root.textColor
-                }
-
-                MouseArea {
-                    id: artClickArea
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: LyricsService.cycleMode()
-
-                    StyledToolTip {
-                        extraVisibleCondition: false
-                        alternativeVisibleCondition: artClickArea.containsMouse
-                        text: LyricsService.modeDescription
+                    StyledImage {
+                        id: mediaArt
+                        anchors.fill: parent
+                        source: root.displayedArtFilePath
+                        visible: status === Image.Ready
+                        fillMode: Image.PreserveAspectCrop
+                        cache: false
+                        antialiasing: true
+                        smooth: true
+                        mipmap: true
+                        sourceSize.width: 264
+                        sourceSize.height: 264
                     }
+
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        visible: root.displayedArtFilePath === "" || mediaArt.status !== Image.Ready
+                        text: "music_note"
+                        iconSize: 42
+                        fill: 1
+                        color: root.textColor
+                    }
+
+                    MouseArea {
+                        id: artClickArea
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: LyricsService.cycleMode()
+
+                        StyledToolTip {
+                            extraVisibleCondition: false
+                            alternativeVisibleCondition: artClickArea.containsMouse
+                            text: LyricsService.modeDescription
+                        }
+                    }
+                }
+
+                LyricsSyncPill {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.margins: 6
+                    coverHovered: artClickArea.containsMouse
                 }
             }
 

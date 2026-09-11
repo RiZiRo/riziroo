@@ -55,34 +55,54 @@ Item {
             Layout.fillHeight: true
             spacing: 15
 
-            Rectangle {
-                id: artBackground
+            // Host for the art plus the sync pill floating over it. The pill is a sibling rather
+            // than a child of artBackground because that rectangle's rounded-corner mask would
+            // clip it to the art's bounds as soon as it expands. Raised above the lyrics view so
+            // the expanded pill draws over it instead of behind its clickable lines.
+            Item {
                 implicitHeight: 150
                 implicitWidth: 150
-                radius: 16
-                color: ColorUtils.transparentize(root.blendedColors.colLayer1, 0.5)
+                z: 1
 
-                layer.enabled: true
-                layer.effect: OpacityMask {
-                    maskSource: Rectangle {
-                        width: artBackground.width
-                        height: artBackground.height
-                        radius: artBackground.radius
+                HoverHandler {
+                    id: coverHover
+                }
+
+                Rectangle {
+                    id: artBackground
+                    anchors.fill: parent
+                    radius: 16
+                    color: ColorUtils.transparentize(root.blendedColors.colLayer1, 0.5)
+
+                    layer.enabled: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: artBackground.width
+                            height: artBackground.height
+                            radius: artBackground.radius
+                        }
+                    }
+
+                    StyledImage {
+                        id: mediaArt
+                        property int size: parent.height
+                        anchors.fill: parent
+                        source: root.displayedArtFilePath
+                        fillMode: Image.PreserveAspectCrop
+                        cache: false
+                        antialiasing: true
+                        width: size
+                        height: size
+                        sourceSize.width: size
+                        sourceSize.height: size
                     }
                 }
 
-                StyledImage {
-                    id: mediaArt
-                    property int size: parent.height
-                    anchors.fill: parent
-                    source: root.displayedArtFilePath
-                    fillMode: Image.PreserveAspectCrop
-                    cache: false
-                    antialiasing: true
-                    width: size
-                    height: size
-                    sourceSize.width: size
-                    sourceSize.height: size
+                LyricsSyncPill {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.margins: 6
+                    coverHovered: coverHover.hovered
                 }
             }
 

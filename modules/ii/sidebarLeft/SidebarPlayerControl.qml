@@ -100,56 +100,72 @@ Item {
             spacing: 0
 
             // ── Album art ──
-            Rectangle {
-                id: artBackground
+            // Host for the art plus the sync pill floating over it. The pill is a sibling rather
+            // than a child of artBackground because that rectangle's rounded-corner mask would
+            // clip it to the art's bounds as soon as it expands. Raised above the lyrics below so
+            // the expanded pill draws over them instead of behind their clickable lines.
+            Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Math.min(parent.width * 1, parent.height * 0.45)
                 Layout.preferredHeight: Layout.preferredWidth
-                radius: Appearance.rounding.normal
-                color: Appearance.colors.colPrimaryContainer
+                z: 1
 
-                layer.enabled: true
-                layer.effect: OpacityMask {
-                    maskSource: Rectangle {
-                        width: artBackground.width
-                        height: artBackground.height
-                        radius: artBackground.radius
+                Rectangle {
+                    id: artBackground
+                    anchors.fill: parent
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colPrimaryContainer
+
+                    layer.enabled: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: artBackground.width
+                            height: artBackground.height
+                            radius: artBackground.radius
+                        }
+                    }
+
+                    StyledImage {
+                        anchors.fill: parent
+                        source: root.displayedArtFilePath
+                        fillMode: Image.PreserveAspectCrop
+                        cache: false
+                        antialiasing: true
+                        sourceSize.width: artBackground.width * 2
+                        sourceSize.height: artBackground.height * 2
+                    }
+
+                    MaterialSymbol {
+                        visible: MprisController.activePlayer === null
+                        anchors.centerIn: parent
+                        fill: 1
+                        text: "music_note"
+                        color: Appearance.colors.colPrimary
+                        iconSize: Appearance.font.pixelSize.hugeass + 100
+                    }
+
+                    // The cover doubles as the switch between the lyric views: karaoke sweep, line by
+                    // line, then the plain text of the song
+                    MouseArea {
+                        id: artClickArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: LyricsService.cycleMode()
+
+                        StyledToolTip {
+                            extraVisibleCondition: false
+                            alternativeVisibleCondition: artClickArea.containsMouse
+                            text: LyricsService.modeDescription
+                        }
                     }
                 }
 
-                StyledImage {
-                    anchors.fill: parent
-                    source: root.displayedArtFilePath
-                    fillMode: Image.PreserveAspectCrop
-                    cache: false
-                    antialiasing: true
-                    sourceSize.width: artBackground.width * 2
-                    sourceSize.height: artBackground.height * 2
-                }
-
-                MaterialSymbol {
-                    visible: MprisController.activePlayer === null
-                    anchors.centerIn: parent
-                    fill: 1
-                    text: "music_note"
-                    color: Appearance.colors.colPrimary
-                    iconSize: Appearance.font.pixelSize.hugeass + 100
-                }
-
-                // The cover doubles as the switch between the lyric views: karaoke sweep, line by
-                // line, then the plain text of the song
-                MouseArea {
-                    id: artClickArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: LyricsService.cycleMode()
-
-                    StyledToolTip {
-                        extraVisibleCondition: false
-                        alternativeVisibleCondition: artClickArea.containsMouse
-                        text: LyricsService.modeDescription
-                    }
+                LyricsSyncPill {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.margins: 6
+                    coverHovered: artClickArea.containsMouse
                 }
             }
 

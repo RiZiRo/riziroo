@@ -17,11 +17,14 @@ view wipes across it at reading pace instead of pretending to know when each wor
 Every request goes out directly first and is retried through a local proxy when one is listening, so
 a source that this network blocks still resolves without the whole system having to be tunnelled.
 
-usage: lyrics.py TITLE ARTIST DURATION [ALBUM] [URL] [--refresh] [--no-richsync]
+usage: lyrics.py TITLE ARTIST DURATION [ALBUM] [URL] [--refresh] [--no-richsync] [--set-offset=MS]
 
 --refresh ignores a cached answer and looks the track up again, which is what the reload button in
 the lyrics view sends: without it a wrong match would keep being served from disk for months.
 --no-richsync skips the Musixmatch word timing lookup.
+--set-offset=MS stores a per-track sync adjustment (0 removes it) in offsets.json under the same key
+as the lyrics cache and exits. The stored value rides along with every later answer as "offset", so
+the view applies it without the timings themselves being rewritten.
 """
 
 import functools
@@ -53,10 +56,15 @@ USER_LYRICS_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".con
 
 
 _emitted = False
+# The current track's saved sync offset in milliseconds, attached to every answer once the cache key
+# is known, so the view restores it without the timings themselves being rewritten
+_track_offset = None
 
 
 def out(payload: dict) -> None:
     global _emitted
+    if _track_offset is not None:
+        payload = {**payload, "offset": _track_offset}
     print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), flush=True)
     _emitted = True
 
@@ -743,6 +751,33 @@ def write_cache(key: str, payload: dict) -> None:
         pass
 
 
+# ---------------------------------------------------------------- user sync offsets
+
+# Per-track sync adjustments the view's nudge buttons make. Kept apart from the cache so clearing
+# the cache never clears them, and keyed like it: sha1 of the cleaned "title|artist".
+OFFSETS_PATH = USER_LYRICS_DIR / "offsets.json"
+
+
+def read_user_offsets() -> dict:
+    try:
+        data = json.loads(OFFSETS_PATH.read_text(encoding="utf-8"))
+        return {str(key): int(value) for key, value in data.items()
+                if isinstance(value, (int, float))}
+    except Exception:
+        return {}
+
+
+def write_user_offsets(offsets: dict) -> None:
+    try:
+        USER_LYRICS_DIR.mkdir(parents=True, exist_ok=True)
+        temporary = OFFSETS_PATH.with_name(f".offsets.{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(offsets, ensure_ascii=False, separators=(",", ":")),
+                             encoding="utf-8")
+        temporary.replace(OFFSETS_PATH)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------- entry point
 
 def synced_payload(entries: list, source: str, title: str, artist: str) -> dict:
@@ -772,10 +807,18 @@ def payload_from_lrc(lrc: str, plain: str, source: str, title: str, artist: str)
 
 
 def main() -> None:
+    global _track_offset
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     refresh = "--refresh" in flags
     want_richsync = "--no-richsync" not in flags
+    set_offset = None
+    for arg in sys.argv[1:]:
+        if arg.startswith("--set-offset="):
+            try:
+                set_offset = int(round(float(arg.split("=", 1)[1])))
+            except ValueError:
+                pass
     if len(args) < 3:
         fail("no_info")
     raw_title = args[0]
@@ -805,6 +848,27 @@ def main() -> None:
             variants.append(pair)
 
     key = cache_key(title, artist)
+    _track_offset = read_user_offsets().get(key, 0)
+    if set_offset is not None:
+        # Storing a sync adjustment is all this run was asked to do. Same cleaning as a lookup, so
+        # the key lands next to the same track's lyrics.
+        offsets = read_user_offsets()
+        if set_offset:
+            offsets[key] = set_offset
+        else:
+            offsets.pop(key, None)
+        write_user_offsets(offsets)
+        return
+
+    # A .lrc the user put next to the audio or in their lyrics folder is a deliberate correction:
+    # it wins over anything fetched, and is re-read on every play so editing it takes effect. It is
+    # never cached, which also leaves the fetched answer available underneath for when the file
+    # goes away.
+    payload = payload_from_lrc(local_lrc(url, title, artist), "", "local file", title, artist)
+    if payload:
+        out(payload)
+        return
+
     cached = {} if refresh else read_cache(key)
     if cached:
         # Answer from disk first, always. An upgrade attempt costs a few round trips and there is no
@@ -823,12 +887,6 @@ def main() -> None:
             # left alone so the next play tries once more.
             cached["rich"] = RICH_GENERATION
             write_cache(key, cached)
-        return
-
-    payload = payload_from_lrc(local_lrc(url, title, artist), "", "local file", title, artist)
-    if payload:
-        write_cache(key, payload)
-        out(payload)
         return
 
     best, _, answered = lrclib_lookup(variants, album, duration)
