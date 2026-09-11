@@ -45,8 +45,7 @@ Item {
         grid.positionViewAtIndex(grid.currentIndex, GridView.Contain)
     }
 
-    function activateCurrent() {
-        const item = wallpaperModel.get(grid.currentIndex)
+    function downloadItem(item, apply) {
         if (!item) return
         const url = item.full
         const urlLower = url.toLowerCase().split("?")[0]
@@ -58,11 +57,16 @@ Item {
         const picturesPath = Directories.pictures.toString().replace("file://", "")
         const fullPath = `${picturesPath}/Wallpapers/${fileName}`
         downloadProc.filePath = fullPath
-        downloadProc.applyAfter = true
+        downloadProc.applyAfter = apply
         downloadProc.command = ["bash", "-c",
             `mkdir -p '${picturesPath}/Wallpapers' && curl -L --silent '${item.full}' -o '${fullPath}'`
         ]
         downloadProc.running = true
+    }
+
+    function activateCurrent() {
+        const item = wallpaperModel.get(grid.currentIndex)
+        root.downloadItem(item, true)
     }
 
     Component.onCompleted: _syncAndFetch()
@@ -261,22 +265,78 @@ Item {
                         root.hoveredItem = delegateItem.model
                         root.forceActiveFocus()
                     }
+                    onExited: {
+                        if (root.hoveredItem === delegateItem.model)
+                            root.hoveredItem = null
+                    }
                     onClicked: event => {
-                        const url = delegateItem.model.full
-                        const urlLower = url.toLowerCase().split("?")[0]
-                        const ext = urlLower.includes(".png") ? "png"
-                            : urlLower.includes(".webp") ? "webp"
-                            : urlLower.includes(".jpeg") ? "jpg"
-                            : "jpg"
-                        const fileName = `${delegateItem.model.provider}-${delegateItem.model.id}.${ext}`
-                        const picturesPath = Directories.pictures.toString().replace("file://", "")
-                        const fullPath = `${picturesPath}/Wallpapers/${fileName}`
-                        downloadProc.filePath = fullPath
-                        downloadProc.applyAfter = event.button === Qt.LeftButton
-                        downloadProc.command = ["bash", "-c",
-                            `mkdir -p '${picturesPath}/Wallpapers' && curl -L --silent '${delegateItem.model.full}' -o '${fullPath}'`
-                        ]
-                        downloadProc.running = true
+                        root.downloadItem(delegateItem.model, event.button === Qt.LeftButton)
+                    }
+                }
+
+                RowLayout {
+                    id: hoverActions
+                    anchors {
+                        bottom: thumb.bottom
+                        right: thumb.right
+                        margins: 6
+                    }
+                    z: 10
+                    spacing: 4
+                    Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                    Rectangle {
+                        width: 26
+                        height: 26
+                        radius: 13
+                        color: "transparent"
+
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "download"
+                            iconSize: 15
+                            color: Appearance.colors.colOnLayer0
+                        }
+
+                        MouseArea {
+                            id: downloadMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.downloadItem(delegateItem.model, false)
+
+                            StyledToolTip {
+                                visible: downloadMouseArea.containsMouse
+                                text: Translation.tr("Download")
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 26
+                        height: 26
+                        radius: 13
+                        color: "transparent"
+
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "wallpaper"
+                            iconSize: 15
+                            color: Appearance.colors.colOnLayer0
+                        }
+
+                        MouseArea {
+                            id: applyMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.downloadItem(delegateItem.model, true)
+
+                            StyledToolTip {
+                                visible: applyMouseArea.containsMouse
+                                text: Translation.tr("Download and Set as Wallpaper")
+                            }
+                        }
                     }
                 }
             }

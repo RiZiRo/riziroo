@@ -9,7 +9,7 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    property string provider:   "wallhaven"  // "wallhaven" | "unsplash"
+    property string provider:   "wallhaven"  // "wallhaven" | "unsplash" | "pexels" | "blapples"
     property string resolution: "1080p"      // "1080p" | "2K" | "4K"
     property string query:      ""           // empty keyword = random
     property string category:   "general"    // wallhaven: "general"|"anime"|"people" / unsplash: "nature"|"city"|...
@@ -28,6 +28,12 @@ Singleton {
     readonly property string unsplashClientId: KeyringStorage.keyringData?.apiKeys?.unsplash  ?? ""
     readonly property string wallhavenApiKey:  KeyringStorage.keyringData?.apiKeys?.wallhaven ?? ""
     readonly property string pexelsApiKey: KeyringStorage.keyringData?.apiKeys?.pexels ?? ""
+
+    // ─── Blapples ───
+    readonly property string blapplesRepo: "https://api.github.com/repos/Blapples/wallpapers/contents/?ref=main"
+    readonly property string blapplesPreviewProxy: "https://wsrv.nl/"
+    readonly property int blapplesPreviewWidth: 960
+    readonly property int blapplesPreviewQuality: 72
 
     // ─── Resolution ───
     readonly property var resolutionMap: ({
@@ -86,6 +92,8 @@ Singleton {
             _fetchUnsplash();
         } else if (root.provider === "pexels") {
             _fetchPexels();
+        } else if (root.provider === "blapples") {
+            _fetchBlapples();
         }
     }
 
@@ -127,6 +135,12 @@ Singleton {
         fetchProc.provider = "pexels";
         fetchProc.command  = ["curl", "-s", "-H", `Authorization: ${root.pexelsApiKey}`, url];
         fetchProc.running  = true;
+    }
+
+    function _fetchBlapples() {
+        fetchProc.provider = "blapples";
+        fetchProc.command = ["curl", "-s", "-H", "Accept: application/vnd.github+json", root.blapplesRepo];
+        fetchProc.running = true;
     }
 
     function _parseWallhaven(jsonStr) {
@@ -214,6 +228,40 @@ Singleton {
         }
     }
 
+    function _parseBlapples(jsonStr) {
+        try {
+            const data = JSON.parse(jsonStr);
+            if (!Array.isArray(data)) throw new Error("Unexpected GitHub API response");
+
+            const imageExt = /\.(png|jpe?g|webp|gif)$/i;
+            const newItems = data
+                .filter(f => f.type === "file" && imageExt.test(f.name))
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(f => {
+                    const baseName = f.name.replace(/\.[^.]+$/, "");
+                    return {
+                        id:               baseName,
+                        thumb:            `${root.blapplesPreviewProxy}?url=${encodeURIComponent(f.download_url)}&w=${root.blapplesPreviewWidth}&q=${root.blapplesPreviewQuality}&fit=inside&output=webp`,
+                        full:             f.download_url,
+                        provider:         "blapples",
+                        title:            baseName.replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+                        author:           "",
+                        authorUrl:        "",
+                        likes:            0,
+                        width:            0,
+                        height:           0,
+                        downloadLocation: "",
+                    };
+                });
+
+            root.totalPages = 1;
+            root.results = root.appending ? root.results.concat(newItems) : newItems;
+            root.fetched();
+        } catch (e) {
+            root.fetchError("Blapples parse error: " + e);
+        }
+    }
+
     // ─── Process ───
     Process {
         id: fetchProc
@@ -242,6 +290,8 @@ Singleton {
                 root._parseUnsplash(fetchProc.buffer);
             } else if (fetchProc.provider === "pexels") {
                 root._parsePexels(fetchProc.buffer);
+            } else if (fetchProc.provider === "blapples") {
+                root._parseBlapples(fetchProc.buffer);
             }
         }
     }

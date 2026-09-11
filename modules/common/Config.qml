@@ -154,6 +154,7 @@ Singleton {
                 property string avatarPicture: ""
                 property string descriptionText: "::distro::"
                 property string displayName: ""
+                property bool onlinePresets: false
 
             }
 
@@ -223,6 +224,9 @@ Singleton {
                 property string lockWall: ""
                 property bool widgetsLocked: false
                 property bool showGrid: true
+                property bool showBlur: false
+                property string splitRatio: "100" // 25 50 100
+                property string splitSide: "left"
                 property bool showSnapLines: true
                 property JsonObject widgets: JsonObject {
                     property JsonObject clock: JsonObject {
@@ -276,6 +280,7 @@ Singleton {
                         property real x: 400
                         property real y: 100
                         property string sizeMode: "1x3"
+                        property bool expanded: false
                     }
 
                     property JsonObject calendar: JsonObject {
@@ -291,7 +296,8 @@ Singleton {
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
-                        property string sizeMode: "2x2" 
+                        property string sizeMode: "2x2"
+                        property int clockCount: 4 
                     }
 
                     property JsonObject notes: JsonObject {
