@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+
+set -u
+
+# Replace the existing Waybar instance so the shell is the only panel.
+pkill -x waybar 2>/dev/null || true
+
+# Point Illogical Impulse's helper scripts at its isolated Python environment.
+# Keep an explicitly supplied value intact for local troubleshooting/custom setups.
+export ILLOGICAL_IMPULSE_VIRTUAL_ENV="${ILLOGICAL_IMPULSE_VIRTUAL_ENV:-$HOME/.local/state/quickshell/.venv}"
+
+# Route shell-owned HTTP requests through a local Xray/v2ray listener when one is
+# up. This does not change system routing or desktop proxy settings, and does
+# nothing at all when nothing is listening on that port.
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q '127\.0\.0\.1:10808'; then
+    export http_proxy="http://127.0.0.1:10808"
+    export https_proxy="http://127.0.0.1:10808"
+    # Keep HTTP(S) clients on the mixed HTTP listener and give SOCKS-aware
+    # clients an explicit SOCKS5 endpoint with remote DNS resolution.
+    export all_proxy="socks5h://127.0.0.1:10808"
+    export HTTP_PROXY="$http_proxy"
+    export HTTPS_PROXY="$https_proxy"
+    export ALL_PROXY="$all_proxy"
+    export no_proxy="${no_proxy:+$no_proxy,}localhost,127.0.0.1,::1"
+    export NO_PROXY="${NO_PROXY:+$NO_PROXY,}localhost,127.0.0.1,::1"
+fi
+
+export QS_NO_RELOAD_POPUP="${QS_NO_RELOAD_POPUP:-1}"
+
+QS_BIN="$(command -v qs 2>/dev/null || echo /usr/bin/qs)"
+if [[ ! -x "$QS_BIN" ]]; then
+    echo "quickshell (qs) was not found on PATH." >&2
+    exit 1
+fi
+QS=("$QS_BIN" --no-duplicate -c end4-pC)
+
+# Launch the shell once, without supervision, for troubleshooting.
+if [[ "${1:-}" == "--no-supervise" ]]; then
+    exec "${QS[@]}"
+fi
+
+# From here on this process supervises the shell: if quickshell dies for any
+# reason (crash, stray `killall qs`, a QML `Qt.quit()`), it is started again and
+# the reason is recorded, so the desktop never degrades to "bare Hyprland".
+# Stop supervising with: pkill -f start-end4-pC && killall qs
+RUNDIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+HIS="${HYPRLAND_INSTANCE_SIGNATURE:-nohypr}"
+STATEDIR="${XDG_STATE_HOME:-$HOME/.local/state}/end4-pC"
+LOG="$STATEDIR/supervisor.log"
+OUT="$STATEDIR/shell.out"
+mkdir -p "$STATEDIR"
+
+# One supervisor per Hyprland session. A second invocation (for example the
+# Ctrl+Super+R "restart widgets" keybind) just exits and lets the running
+# supervisor bring the shell back, which avoids the old race where `killall qs`
+# and a fresh `qs --no-duplicate` overlapped and left nothing running.
+exec 9>"$RUNDIR/start-end4-pC.$HIS.lock"
+flock -n 9 || exit 0
+
+log() {
+    printf '%(%Y-%m-%d %H:%M:%S)T  %s\n' -1 "$*" >>"$LOG"
+    # Keep the log small.
+    if [[ $(stat -c %s "$LOG" 2>/dev/null || echo 0) -gt 262144 ]]; then
+        tail -n 400 "$LOG" >"$LOG.tmp" && mv -f "$LOG.tmp" "$LOG"
+    fi
+}
+
+shell_running() {
+    "$QS_BIN" list --all 2>/dev/null | grep -qF "/end4-pC/shell.qml"
+}
+
+session_gone() {
+    [[ "$HIS" != "nohypr" && ! -d "$RUNDIR/hypr/$HIS" ]]
+}
+
+child=""
+trap '[[ -n $child ]] && kill "$child" 2>/dev/null; exit 0' TERM INT HUP
+
+log "supervisor started (pid $$, session $HIS)"
+
+quick_failures=0
+monitoring=0
+while :; do
+    session_gone && { log "Hyprland session ended; supervisor exiting"; exit 0; }
+
+    # Never fight an instance that is already up - the one from autostart, a
+    # manual `qs -c end4-pC`, or one that won a startup race with us. Watch it
+    # instead, and take over the moment it disappears.
+    if shell_running; then
+        ((monitoring)) || log "an instance is already running; monitoring it"
+        monitoring=1
+        quick_failures=0
+        sleep 2
+        continue
+    fi
+    monitoring=0
+
+    # Keep the output of the run that just died available for post-mortem.
+    [[ -f "$OUT" ]] && mv -f "$OUT" "$OUT.prev"
+
+    started=$SECONDS
+    "${QS[@]}" >"$OUT" 2>&1 &
+    child=$!
+    log "started quickshell (pid $child)"
+    wait "$child"
+    status=$?
+    child=""
+    ran=$((SECONDS - started))
+
+    # `qs --no-duplicate` exits 0 with this message when it loses a race.
+    if ((status == 0)) && grep -q 'already running' "$OUT" 2>/dev/null; then
+        continue
+    fi
+
+    if ((status > 128)); then
+        reason="killed by SIG$(kill -l "$((status - 128))" 2>/dev/null || echo "NAL$((status - 128))")"
+    elif ((status == 0)); then
+        reason="exited cleanly (code 0 - something asked it to quit)"
+    else
+        reason="exited with code $status"
+    fi
+    log "shell $reason after ${ran}s; its output was saved to $OUT.prev"
+
+    if ((ran < 5)); then
+        ((quick_failures++))
+    else
+        quick_failures=0
+    fi
+
+    if ((quick_failures >= 5)); then
+        log "giving up: 5 failures in a row within 5s of starting"
+        hyprctl notify -1 10000 "rgb(ff5555)" \
+            "Shell keeps failing to start - see $LOG" >/dev/null 2>&1 || true
+        exit 1
+    fi
+
+    sleep 1
+done
