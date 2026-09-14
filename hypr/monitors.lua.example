@@ -1,0 +1,22 @@
+-- Monitor layout. Copy this to `monitors.lua` (the installer does it for you)
+-- and edit it to match your display -- the values below are only an example.
+--
+-- This file is deliberately NOT tracked in git: it is machine-specific, and
+-- custom/scripts/set-scale.sh rewrites the scale value in place every time you
+-- press SUPER+CTRL+S, which would leave the repo permanently dirty.
+--
+-- Find your output name and modes with:
+--     hyprctl monitors all
+--
+--   output   -- connector name, e.g. HDMI-A-1, DP-1, eDP-1
+--   mode     -- <width>x<height>@<refresh>, or "preferred" to let Hyprland pick
+--   position -- <x>x<y>, top-left corner in the virtual desktop layout
+--   scale    -- 1 = native. set-scale.sh cycles 1 / 1.25 / 1.5
+--
+-- Keep `scale = <number>` spelled exactly that way on one line: that is the
+-- pattern set-scale.sh anchors its sed to.
+
+hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@120.00Hz", position = "0x0", scale = 1 })
+
+-- Multi-monitor: one hl.monitor() call per display, positions side by side.
+-- hl.monitor({ output = "DP-1", mode = "preferred", position = "1920x0", scale = 1 })

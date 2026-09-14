@@ -10,3 +10,10 @@ graphify-out/
 
 # Superseded module snapshots kept for local reference only
 .archive/
+
+# Machine-specific display layout. hypr/monitors.lua.example is the template;
+# the real file is per-machine and set-scale.sh rewrites it on every SUPER+CTRL+S.
+hypr/monitors.lua
+
+# Wallpaper frame cache -- personal media filenames, not config
+hypr/custom/scripts/mpvpaper_thumbnails/
