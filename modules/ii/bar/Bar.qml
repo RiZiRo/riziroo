@@ -26,11 +26,31 @@ Scope {
         }
         LazyLoader {
             id: barLoader
-            active: GlobalStates.barOpen && !GlobalStates.screenLocked
             required property ShellScreen modelData
+            readonly property bool wantsIsland: IslandState.enabled && IslandState.expanded
+                && (barLoader.modelData?.name ?? "") === (Hyprland.focusedMonitor?.name ?? "")
+            property bool keepIsland: false
+            // Own the lifetime outside the loaded window: reading item from
+            // active would feed the loader's creation back into its own binding.
+            property Timer exitTimer: Timer {
+                interval: 300
+                onTriggered: barLoader.keepIsland = false
+            }
+            onWantsIslandChanged: {
+                if (barLoader.wantsIsland) {
+                    barLoader.exitTimer.stop();
+                    barLoader.keepIsland = true;
+                } else if (barLoader.keepIsland) {
+                    barLoader.exitTimer.restart();
+                }
+            }
+            Component.onCompleted: barLoader.keepIsland = barLoader.wantsIsland
+            active: !GlobalStates.screenLocked && (GlobalStates.barOpen
+                || (IslandState.enabled && (barLoader.wantsIsland || barLoader.keepIsland)))
             component: PanelWindow { // Bar window
                 id: barRoot
                 screen: barLoader.modelData
+                readonly property bool islandOnly: !GlobalStates.barOpen
 
                 Timer {
                     id: showBarTimer
@@ -52,7 +72,7 @@ Scope {
                     }
                 }
 
-                property bool showCorners: !Config.options.bar.autoHide.enable || mustShow
+                property bool showCorners: !barRoot.islandOnly && (!Config.options.bar.autoHide.enable || mustShow)
 
                 Timer {
                     id: cornerRevealTimer
@@ -70,7 +90,7 @@ Scope {
                     }
                 }
                 property bool superShow: false
-                property bool mustShow: hoverRegion.containsMouse || superShow
+                property bool mustShow: barRoot.islandExpanded || hoverRegion.containsMouse || superShow
                 // The island's expanded surface lives in this window (see IslandSurface.qml), and
                 // only on the bar the user is actually looking at -- IslandState is global, so
                 // without this every monitor would grow a copy.
@@ -78,11 +98,44 @@ Scope {
                 readonly property bool islandExpanded: IslandState.expanded && barRoot.isFocusedMonitor
                 readonly property real islandSurfaceHeight: islandSurfaceLoader.item?.implicitHeight ?? 0
                 readonly property real islandGap: 6
+
+                // Kept true for one animation's worth after the island collapses, so the surface
+                // gets to play its exit instead of being destroyed under it. `islandExpanded`
+                // itself must stay instant -- the input mask and the layer both key off it.
+                property bool islandSurfaceAlive: false
+                onIslandExpandedChanged: {
+                    if (barRoot.islandExpanded) {
+                        islandSurfaceKeepAlive.stop();
+                        barRoot.islandSurfaceAlive = true;
+                    } else if (barRoot.islandSurfaceAlive) {
+                        islandSurfaceKeepAlive.restart();
+                    }
+                }
+                Timer {
+                    id: islandSurfaceKeepAlive
+                    interval: 300
+                    onTriggered: barRoot.islandSurfaceAlive = false
+                }
+
+                // The last mode that was actually up. IslandState.mode goes to "collapsed" the
+                // instant the island closes, but the surface is still on screen playing its exit
+                // for another 300ms -- handing it the live mode would tear down the results and
+                // build the dashboard underneath that animation, flashing the wrong surface on the
+                // way out. Only ever read while collapsed (see frozenMode below), so by the time
+                // it matters this handler has long since run.
+                property string islandLastMode: "search"
+                Connections {
+                    target: IslandState
+                    function onModeChanged() {
+                        if (IslandState.mode !== "collapsed")
+                            barRoot.islandLastMode = IslandState.mode;
+                    }
+                }
                 property var thisMonitorData: HyprlandData.monitors.find(m => m.name === barRoot.screen?.name)
                 property bool monitorHasFullscreen: HyprlandData.workspaceById[thisMonitorData?.activeWorkspace?.id]?.hasfullscreen ?? false
                 property bool monitorHasSpecialOpen: (thisMonitorData?.specialWorkspace?.name ?? "") !== ""
                 exclusionMode: ExclusionMode.Ignore
-                exclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows)) ? 0 : Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0) + (Config.options.bar.cornerStyle === 2 ? -6 : 0)
+                exclusiveZone: barRoot.islandOnly || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows)) ? 0 : Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0) + (Config.options.bar.cornerStyle === 2 ? -6 : 0)
                 WlrLayershell.namespace: "quickshell:bar"
                 // The island's field and now its whole surface live in this window, so the bar has
                 // to hold keyboard focus while it is open. Exclusive rather than OnDemand: under
@@ -90,14 +143,34 @@ Scope {
                 // island without one. Covers the dashboard too, so Escape and the to-do list's
                 // text field both work.
                 WlrLayershell.keyboardFocus: barRoot.islandExpanded ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-                // Overlay layer only while special workspace sits on top of a fullscreen window on this monitor,
-                // else Top layer so fullscreen apps cover the bar as normal (Hyprland buries Top layer under fullscreen+special).
-                WlrLayershell.layer: (monitorHasFullscreen && monitorHasSpecialOpen) ? WlrLayer.Overlay : WlrLayer.Top
-                // Fullscreen while the island is expanded. Visually nothing changes -- the window
-                // is transparent outside the bar -- but the input mask (bound to hoverMaskRegion,
-                // which then fills this window) can cover empty screen, so clicks outside the pill
-                // and its surface reach islandDismissArea instead of falling to clients.
-                implicitHeight: barRoot.islandExpanded ? (barRoot.screen?.height ?? 800) : Appearance.sizes.barHeight + Appearance.rounding.screenRounding
+                // Overlay layer while the island is expanded -- so Alt+Space brings it up over a
+                // fullscreen window instead of leaving it buried -- and while a special workspace
+                // sits on top of a fullscreen window. Else Top layer, so fullscreen apps cover the
+                // bar as normal (Hyprland buries Top layer under fullscreen).
+                WlrLayershell.layer: (barRoot.islandExpanded || (monitorHasFullscreen && monitorHasSpecialOpen)) ? WlrLayer.Overlay : WlrLayer.Top
+                // NEVER resize this window. Hyprland animates a layer surface's geometry and
+                // scales the client's texture to whatever the box is mid-animation, so growing the
+                // bar to fullscreen on expand squashed the entire bar -- all three pills and the
+                // island surface with them -- into the still-growing box for the length of the
+                // layer animation, then snapped. `layerrule = noanim` does not fix it either
+                // (hyprwm/Hyprland#7524). So the window is always the height it needs at its
+                // largest: fullscreen, transparent everywhere but the bar strip.
+                //
+                // Fullscreen is what the expanded island wants anyway -- the input mask (bound to
+                // hoverMaskRegion) then covers empty screen, so clicks outside the pill and its
+                // surface reach islandDismissArea instead of falling to clients. Collapsed, the
+                // mask shrinks back to the bar strip and every pixel below it passes clicks
+                // through exactly as before.
+                implicitHeight: IslandState.enabled
+                    ? (barRoot.screen?.height ?? 800)
+                    : Appearance.sizes.barHeight + Appearance.rounding.screenRounding
+                // The other half of never resizing: tell Hyprland which pixels are actually worth
+                // rendering. Without this the compositor treats the whole fullscreen surface as
+                // paintable and blurable, and the island's cava meter repaints it at the player's
+                // frame rate. Collapsed this is exactly the rect the window used to be.
+                HyprlandWindow.visibleMask: Region {
+                    item: visibleMaskRegion
+                }
                 // When Overlay-layer, bar shares a layer with the screen-corner click zones (ScreenCorners.qml)
                 // and same-layer overlap is resolved by stacking, not layer priority - bar was winning and
                 // swallowing the tiny corner-open hit rects. Carve them out of the bar's own mask so clicks
@@ -107,6 +180,11 @@ Scope {
                 property int cornerOpenCutHeight: cutOutCornerOpenZones ? Config.options.sidebar.cornerOpen.cornerRegionHeight : 0
                 mask: Region {
                     item: hoverMaskRegion
+                    Region {
+                        intersection: Intersection.Intersect
+                        width: barRoot.width
+                        height: barRoot.islandOnly && !barRoot.islandExpanded ? 0 : barRoot.height
+                    }
                     Region {
                         intersection: Intersection.Subtract
                         x: 0
@@ -140,10 +218,35 @@ Scope {
 
                 // Include in focus grab
                 Component.onCompleted: {
+                    if (barRoot.islandExpanded)
+                        barRoot.islandSurfaceAlive = true;
                     GlobalFocusGrab.addPersistent(barRoot);
                 }
                 Component.onDestruction: {
                     GlobalFocusGrab.removePersistent(barRoot);
+                }
+
+                // Geometry for HyprlandWindow.visibleMask above. Collapsed it is the bar strip plus
+                // the screen-rounding decorators -- i.e. the exact rect this window used to be, so
+                // nothing that was drawn before can be clipped by it. Expanded it is the whole
+                // window, which is what the surface, its shadow and the pill's overshoot need.
+                // Follows islandSurfaceAlive rather than islandExpanded so the surface's exit
+                // animation isn't cut off at the frame the island closes.
+                //
+                // x/y/width/height rather than anchors: this is read by the compositor, not laid
+                // out, and explicit geometry is right on the very first frame instead of after a
+                // layout pass. Paints nothing and has no MouseArea, so it is invisible to both the
+                // screen and the pointer.
+                Item {
+                    id: visibleMaskRegion
+                    readonly property real stripHeight: Appearance.sizes.barHeight + Appearance.rounding.screenRounding
+                    readonly property bool full: barRoot.islandExpanded || barRoot.islandSurfaceAlive
+                    x: 0
+                    width: barRoot.width
+                    height: visibleMaskRegion.full ? barRoot.height : visibleMaskRegion.stripHeight
+                    y: (!visibleMaskRegion.full && Config.options.bar.bottom)
+                        ? Math.max(0, barRoot.height - visibleMaskRegion.stripHeight)
+                        : 0
                 }
 
                 // NO GlobalFocusGrab registration for the island, deliberately. Registering this
@@ -203,7 +306,9 @@ Scope {
 
                     Loader {
                         id: islandSurfaceLoader
-                        active: barRoot.islandExpanded
+                        // Outlives islandExpanded by one animation (see islandSurfaceKeepAlive), so
+                        // the surface plays its exit rather than blinking out of existence.
+                        active: barRoot.islandExpanded || barRoot.islandSurfaceAlive
                         visible: active
                         anchors {
                             horizontalCenter: parent.horizontalCenter
@@ -212,12 +317,19 @@ Scope {
                             topMargin: barRoot.islandGap
                             bottomMargin: barRoot.islandGap
                         }
-                        sourceComponent: IslandSurface {}
+                        sourceComponent: IslandSurface {
+                            shown: barRoot.islandExpanded
+                            // Live while a mode is up -- so the loader builds the right card on its
+                            // very first evaluation, whatever order this and the islandLastMode
+                            // handler happen to run in -- and the latch only during the exit, where
+                            // the live value is "collapsed" and would swap the card mid-animation.
+                            frozenMode: IslandState.expanded ? IslandState.mode : barRoot.islandLastMode
+                        }
                     }
 
                     RoundCorner {
                         id: leftPillCorner
-                        visible: barContent.centerOnly && showBarBackground && Config.options.bar.cornerStyle === 0 && barRoot.showCorners
+                        visible: !barRoot.islandOnly && barContent.centerOnly && showBarBackground && Config.options.bar.cornerStyle === 0 && barRoot.showCorners
                         x: barContent.centerPillX - implicitSize
                         implicitSize: Appearance.rounding.screenRounding
                         color: Config.options.bar.followFrameColor
@@ -247,6 +359,8 @@ Scope {
 
                     BarContent {
                         id: barContent
+                        islandOnly: barRoot.islandOnly
+                        opacity: barRoot.islandOnly && !barRoot.islandExpanded ? 0 : 1
                         
                         implicitHeight: Appearance.sizes.barHeight
                         anchors {
@@ -287,7 +401,7 @@ Scope {
 
                     RoundCorner {
                         id: rightPillCorner
-                        visible: barContent.centerOnly && showBarBackground && Config.options.bar.cornerStyle === 0 && barRoot.showCorners
+                        visible: !barRoot.islandOnly && barContent.centerOnly && showBarBackground && Config.options.bar.cornerStyle === 0 && barRoot.showCorners
                         x: barContent.centerPillX + barContent.centerPillWidth
                         implicitSize: Appearance.rounding.screenRounding
                         color: Config.options.bar.followFrameColor
@@ -325,7 +439,7 @@ Scope {
                             bottom: undefined
                         }
                         height: Appearance.rounding.screenRounding
-                        active: showBarBackground && Config.options.bar.cornerStyle === 0 && !barContent.centerOnly// Hug
+                        active: !barRoot.islandOnly && showBarBackground && Config.options.bar.cornerStyle === 0 && !barContent.centerOnly// Hug
 
                         states: State {
                             name: "bottom"

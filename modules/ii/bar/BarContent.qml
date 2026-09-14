@@ -11,6 +11,7 @@ import qs.modules.common.functions
 
 Item {
     id: root
+    property bool islandOnly: false
     implicitHeight: Appearance.sizes.barHeight
     width: parent.width
     readonly property real barPadding: 0
@@ -25,9 +26,9 @@ Item {
         return layout.filter(name => name !== "sysTray")
     }
 
-    readonly property var effectiveLeftLayout:   filterLayout(Config.options.bar.layouts.leftLayout)
-    readonly property var effectiveMiddleLayout: filterLayout(Config.options.bar.layouts.middleLayout)
-    readonly property var effectiveRightLayout:  filterLayout(Config.options.bar.layouts.rightLayout)
+    readonly property var effectiveLeftLayout:   root.islandOnly ? [] : filterLayout(Config.options.bar.layouts.leftLayout)
+    readonly property var effectiveMiddleLayout: root.islandOnly ? ["dynamicIsland"] : filterLayout(Config.options.bar.layouts.middleLayout)
+    readonly property var effectiveRightLayout:  root.islandOnly ? [] : filterLayout(Config.options.bar.layouts.rightLayout)
 
     function getWidgetUrl(name) {
         if (!name) return "";
@@ -74,13 +75,13 @@ Item {
         id: barBackground
         anchors.fill: parent
         anchors.margins: Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0
-        color: (!centerOnly && Config.options.bar.showBackground && Config.options.bar.cornerStyle !== 2 && !root.isMaterial)
+        color: (!root.islandOnly && !centerOnly && Config.options.bar.showBackground && Config.options.bar.cornerStyle !== 2 && !root.isMaterial)
             ? (Config.options.bar.followFrameColor
                 ? Appearance.getColorFromName(Config.options.bar.frameColor)
                 : Appearance.colors.colLayer0)
             : "transparent"
         radius: Config.options.bar.cornerStyle === 1 ? Appearance.rounding.windowRounding : 0
-        border.width: (!centerOnly && Config.options.bar.cornerStyle === 1) ? 1 : 0
+        border.width: (!root.islandOnly && !centerOnly && Config.options.bar.cornerStyle === 1) ? 1 : 0
         border.color: Config.options.bar.cornerStyle === 1 && !Config.options.bar.showBackground ? "transparent" : Appearance.colors.colLayer0Border
     }
 
@@ -91,7 +92,7 @@ Item {
 
     Rectangle {
         id: centerPill
-        visible: centerOnly && Config.options.bar.showBackground && Config.options.bar.cornerStyle !== 2
+        visible: !root.islandOnly && centerOnly && Config.options.bar.showBackground && Config.options.bar.cornerStyle !== 2
         anchors.verticalCenter: parent.verticalCenter
         anchors.horizontalCenter: parent.horizontalCenter
         width: middleRow.implicitWidth + 10
@@ -116,6 +117,7 @@ Item {
 
         // Left
         Item {
+            visible: !root.islandOnly
             anchors.left: parent.left
             anchors.leftMargin: root.isMaterial ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : 8)
             anchors.top: parent.top
@@ -229,7 +231,7 @@ Item {
                 implicitWidth: centerMaterialRow.implicitWidth + 10
                 implicitHeight: centerMaterialRow.implicitHeight
                 radius: Appearance.rounding.full
-                color: Appearance.colors.colLayer0
+                color: root.islandOnly ? "transparent" : Appearance.colors.colLayer0
 
                 RowLayout {
                     id: centerMaterialRow
@@ -314,6 +316,7 @@ Item {
 
         // Right
         Item {
+            visible: !root.islandOnly
             anchors.right: parent.right
             anchors.rightMargin: root.isMaterial ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : 8)
             anchors.top: parent.top

@@ -575,7 +575,7 @@ Item {
                                     font: lyricMetrics.font
                                     text: wordItem.word
                                     color: root.textColor
-                                    opacity: 0.45
+                                    opacity: 0.65
                                 }
 
                                 Item { // Sung: wiped in across the word as it is sung

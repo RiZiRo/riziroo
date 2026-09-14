@@ -2,7 +2,6 @@ import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
-import Qt.labs.synchronizer
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -15,16 +14,14 @@ Scope {
     id: overviewScope
     property bool dontAutoCancelSearch: false
 
-    // When the island is the bar's centre widget and configured to absorb search, the launcher
-    // keybinds route into it instead of opening this overlay. The workspace grid (Super+Tab,
-    // overviewWorkspacesToggle) is untouched either way -- only the search half moves.
-    readonly property bool islandAbsorbs: Config.options.bar.island.enable
-        && Config.options.bar.island.absorbSearch
-        && Config.options.bar.layouts.middleLayout.includes("dynamicIsland")
+    // Super is the workspace overview; Alt+Space is the launcher. Keep the old
+    // search as a fallback only when no working island is configured.
+    readonly property bool workspaceOnly: IslandState.enabled
+    readonly property bool islandAbsorbs: IslandState.enabled
 
     PanelWindow {
         id: panelWindow
-        property string searchingText: ""
+        readonly property string searchingText: overviewScope.workspaceOnly ? "" : LauncherSearch.query
         readonly property HyprlandMonitor monitor: Hyprland.monitorFor(panelWindow.screen)
         property bool monitorIsFocused: (Hyprland.focusedMonitor?.id == monitor?.id)
         visible: GlobalStates.overviewOpen
@@ -49,14 +46,16 @@ Scope {
             target: GlobalStates
             function onOverviewOpenChanged() {
                 if (!GlobalStates.overviewOpen) {
-                    searchWidget.disableExpandAnimation();
+                    searchWidgetLoader.item?.disableExpandAnimation();
                     overviewScope.dontAutoCancelSearch = false;
                     GlobalFocusGrab.dismiss();
                 } else {
                     if (!overviewScope.dontAutoCancelSearch) {
-                        searchWidget.cancelSearch();
+                        searchWidgetLoader.item?.cancelSearch();
                     }
                     GlobalFocusGrab.addDismissable(panelWindow);
+                    if (overviewScope.workspaceOnly)
+                        Qt.callLater(() => columnLayout.forceActiveFocus());
                 }
             }
         }
@@ -71,8 +70,8 @@ Scope {
         implicitHeight: columnLayout.implicitHeight
 
         function setSearchingText(text) {
-            searchWidget.setSearchingText(text);
-            searchWidget.focusFirstItem();
+            searchWidgetLoader.item?.setSearchingText(text);
+            searchWidgetLoader.item?.focusFirstItem();
         }
 
         Column {
@@ -82,26 +81,27 @@ Scope {
                 horizontalCenter: parent.horizontalCenter
                 top: parent.top
             }
-            spacing: -8
+            spacing: overviewScope.workspaceOnly ? 0 : -8
+            focus: overviewScope.workspaceOnly && GlobalStates.overviewOpen
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Escape) {
                     GlobalStates.overviewOpen = false;
                 } else if (event.key === Qt.Key_Left) {
-                    if (!panelWindow.searchingText)
-                        Hyprland.dispatch("workspace r-1");
+                    if (overviewScope.workspaceOnly || !panelWindow.searchingText)
+                        Hyprland.dispatch('hl.dsp.focus({ workspace = "r-1" })');
                 } else if (event.key === Qt.Key_Right) {
-                    if (!panelWindow.searchingText)
-                        Hyprland.dispatch("workspace r+1");
+                    if (overviewScope.workspaceOnly || !panelWindow.searchingText)
+                        Hyprland.dispatch('hl.dsp.focus({ workspace = "r+1" })');
                 }
             }
 
-            SearchWidget {
-                id: searchWidget
+            Loader {
+                id: searchWidgetLoader
                 anchors.horizontalCenter: parent.horizontalCenter
-                Synchronizer on searchingText {
-                    property alias source: panelWindow.searchingText
-                }
+                active: !overviewScope.workspaceOnly
+                visible: active
+                sourceComponent: SearchWidget {}
             }
 
             Loader {
@@ -113,7 +113,7 @@ Scope {
                     id: defaultComponent
                     OverviewWidget {
                         screen: panelWindow.screen
-                        visible: (panelWindow.searchingText == "")
+                        visible: overviewScope.workspaceOnly || (panelWindow.searchingText == "")
                     }
                 }
 
@@ -122,7 +122,7 @@ Scope {
                     NiriOverview {
                         screen: panelWindow.screen
                         panelWindow: panelWindow
-                        visible: (panelWindow.searchingText == "")
+                        visible: overviewScope.workspaceOnly || (panelWindow.searchingText == "")
                     }
                 }
             }
@@ -172,10 +172,6 @@ Scope {
     }
 
     function toggleSearch() {
-        if (overviewScope.islandAbsorbs) {
-            IslandState.toggle("search");
-            return;
-        }
         GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
     }
 

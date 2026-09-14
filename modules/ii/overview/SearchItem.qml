@@ -226,16 +226,17 @@ RippleButton {
                     color: root.colForeground
                     horizontalAlignment: Text.AlignLeft
                     elide: Text.ElideRight
-                    text: root.selected ? root.itemName : root.displayContent
+                    text: root.selected ? StringUtils.escapeHtml(root.itemName) : root.displayContent
                 }
             }
             StyledText { // Symbol tags / description
-                visible: root.itemTags !== "" && root.itemType === Translation.tr("Symbol")
+                visible: root.itemTags !== "" && (root.itemType === Translation.tr("Symbol") || root.entry?.category === "files")
                 Layout.fillWidth: true
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: root.selected ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colSubtext
                 elide: Text.ElideRight
                 text: root.itemTags
+                textFormat: Text.PlainText
             }
             Loader { // Clipboard image preview
                 active: root.cliphistRawString && Cliphist.entryIsImage(root.cliphistRawString)

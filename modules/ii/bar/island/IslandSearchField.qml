@@ -3,10 +3,12 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
+import Quickshell
 
 /**
- * Expanded island content: mode chips, the query field, and a clear/close button.
+ * Expanded island content: a compact mode menu, the query field, and close.
  *
  * The chips do nothing more than rewrite the query's prefix, so this is a discoverable front-end
  * over the prefix system LauncherSearch already implements rather than a second search engine.
@@ -20,11 +22,15 @@ RowLayout {
     id: root
     spacing: 8
 
+    readonly property real naturalWidth: 280
+
     readonly property var modeIcons: ({
         "all": "search",
         "apps": "apps",
+        "files": "folder_open",
         "clipboard": "content_paste",
         "emoji": "mood",
+        "symbols": "category",
         "ai": "smart_toy",
         "keybinds": "keyboard",
         "translate": "translate"
@@ -33,6 +39,7 @@ RowLayout {
     readonly property var placeholders: ({
         "all": Translation.tr("Search, calculate or run"),
         "apps": Translation.tr("Search apps"),
+        "files": Translation.tr("Find files and folders"),
         "clipboard": Translation.tr("Search clipboard history"),
         "emoji": Translation.tr("Search emoji"),
         "ai": Translation.tr("Ask AI..."),
@@ -41,7 +48,27 @@ RowLayout {
     })
 
     function focusInput(): void {
-        Qt.callLater(() => input.forceActiveFocus());
+        if (IslandState.searchActive)
+            Qt.callLater(() => input.forceActiveFocus());
+    }
+
+    function submit(): void {
+        if (IslandState.searchMode === "ai") {
+            if (IslandAiService.status !== "loading")
+                IslandAiService.submit();
+        } else {
+            IslandState.activateSelected();
+        }
+    }
+
+    function openModes(): void {
+        const point = modeButton.mapToItem(modeMenu.parent, 0, 0);
+        modeMenu.x = Math.max(8, Math.min(point.x, modeMenu.parent.width - modeMenu.width - 8));
+        modeMenu.y = Config.options.bar.bottom
+            ? point.y - modeMenu.height - 12 : point.y + modeButton.height + 12;
+        modeList.currentIndex = IslandState.searchModes.indexOf(IslandState.searchMode);
+        modeMenu.open();
+        modeList.forceActiveFocus();
     }
 
     Component.onCompleted: {
@@ -62,46 +89,100 @@ RowLayout {
         }
     }
 
-    RowLayout {
-        spacing: 2
+    RippleButton {
+        id: modeButton
+        implicitWidth: 48
+        implicitHeight: 28
+        buttonRadius: Appearance.rounding.full
         Layout.alignment: Qt.AlignVCenter
+        colBackground: Appearance.colors.colPrimaryContainer
+        contentItem: Row {
+            anchors.centerIn: parent
+            spacing: 2
+            MaterialSymbol {
+                text: root.modeIcons[IslandState.searchMode] ?? "search"
+                iconSize: 18
+                height: 18
+                color: Appearance.colors.colOnPrimaryContainer
+            }
+            MaterialSymbol {
+                text: "expand_more"
+                iconSize: 16
+                height: 18
+                color: Appearance.colors.colOnPrimaryContainer
+            }
+        }
+        onClicked: modeMenu.opened ? modeMenu.close() : root.openModes()
+        StyledToolTip { text: Translation.tr("Search mode · F1 · Tab to cycle") }
+    }
 
-        Repeater {
-            model: IslandState.searchModes
-
-            delegate: Rectangle {
-                id: chip
-                required property string modelData
-                readonly property bool active: IslandState.searchMode === chip.modelData
-
-                implicitWidth: 27
-                implicitHeight: 24
-                radius: Appearance.rounding.verysmall - 2
-                color: chip.active
-                    ? Appearance.colors.colPrimary
-                    : (chipMouse.containsMouse ? Appearance.colors.colLayer2Hover : "transparent")
-
-                Behavior on color {
-                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+    // Item popup stays in the same layer window and escapes the pill's clip.
+    Popup {
+        id: modeMenu
+        parent: Overlay.overlay
+        popupType: Popup.Item
+        width: 250
+        height: modeList.contentHeight + 48
+        padding: 8
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: root.focusInput()
+        background: Rectangle {
+            radius: Appearance.rounding.normal
+            color: Appearance.m3colors.m3surfaceContainer
+            border.width: 1
+            border.color: Appearance.colors.colOutlineVariant
+        }
+        contentItem: Column {
+            spacing: 6
+            ListView {
+                id: modeList
+                width: parent.width
+                height: contentHeight
+                model: IslandState.searchModes
+                spacing: 2
+                keyNavigationEnabled: true
+                function choose(index) {
+                    IslandState.setSearchMode(IslandState.searchModes[index]);
+                    modeMenu.close();
                 }
-
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    text: root.modeIcons[chip.modelData] ?? "search"
-                    iconSize: Appearance.font.pixelSize.normal
-                    color: chip.active ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurfaceVariant
-                }
-
-                MouseArea {
-                    id: chipMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        IslandState.setSearchMode(chip.modelData);
-                        root.focusInput();
+                Keys.onReturnPressed: choose(currentIndex)
+                Keys.onEnterPressed: choose(currentIndex)
+                delegate: RippleButton {
+                    required property string modelData
+                    required property int index
+                    width: modeList.width
+                    implicitHeight: 34
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: index === modeList.currentIndex
+                        ? Appearance.colors.colPrimaryContainer : "transparent"
+                    onClicked: modeList.choose(index)
+                    contentItem: RowLayout {
+                        spacing: 10
+                        MaterialSymbol {
+                            text: root.modeIcons[modelData] ?? "search"
+                            iconSize: 19
+                            color: Appearance.colors.colOnSurface
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: modelData === "ai" ? "AI assistant"
+                                : modelData.charAt(0).toUpperCase() + modelData.slice(1)
+                            font.pixelSize: Appearance.font.pixelSize.small
+                        }
+                        StyledText {
+                            text: modelData === "all" ? "—" : IslandState.prefixFor(modelData).trim()
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                        }
                     }
                 }
+            }
+            StyledText {
+                text: Translation.tr("Tab / Shift+Tab switch mode")
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+                anchors.horizontalCenter: parent.horizontalCenter
             }
         }
     }
@@ -155,7 +236,10 @@ RowLayout {
                 event.accepted = true;
             }
             Keys.onDownPressed: event => {
-                IslandState.moveSelection(IslandState.gridColumns > 0 ? IslandState.gridColumns : 1);
+                if (event.modifiers & Qt.AltModifier)
+                    root.openModes();
+                else
+                    IslandState.moveSelection(IslandState.gridColumns > 0 ? IslandState.gridColumns : 1);
                 event.accepted = true;
             }
 
@@ -181,16 +265,19 @@ RowLayout {
             }
 
             Keys.onReturnPressed: event => {
-                IslandState.activateSelected();
+                root.submit();
                 event.accepted = true;
             }
             Keys.onEnterPressed: event => {
-                IslandState.activateSelected();
+                root.submit();
                 event.accepted = true;
             }
 
             Keys.onPressed: event => {
-                if (event.key === Qt.Key_PageDown) {
+                if (event.key === Qt.Key_F1) {
+                    root.openModes();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_PageDown) {
                     IslandState.moveSelection(IslandState.gridColumns > 0 ? IslandState.gridColumns * 4 : 5);
                     event.accepted = true;
                 } else if (event.key === Qt.Key_PageUp) {
@@ -242,7 +329,8 @@ RowLayout {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                if (LauncherSearch.query.length > 0) {
+                const modePrefix = IslandState.prefixFor(IslandState.searchMode);
+                if (LauncherSearch.query.slice(modePrefix.length).length > 0) {
                     LauncherSearch.query = IslandState.prefixFor(IslandState.searchMode);
                     root.focusInput();
                 } else {

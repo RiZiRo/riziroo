@@ -112,7 +112,15 @@ Item {
                 Layout.fillHeight: true
                 player: root.player
                 textColor: root.blendedColors.colOnLayer0
-                activeColor: root.blendedColors.colPrimary
+                // The blended colPrimary is half dark album-art colour, which reads muddy on the
+                // sung line; keep its hue but lift saturation and lightness so it pops
+                activeColor: {
+                    const c = root.blendedColors.colPrimary
+                    return Qt.hsla(c.hslHue,
+                        ColorUtils.clamp01(Math.max(0.55, c.hslSaturation * 2.2)),
+                        ColorUtils.clamp01(Math.max(0.76, c.hslLightness + 0.28)),
+                        1.0)
+                }
                 dimColor: root.blendedColors.colSubtext
                 indicatorColor: {
                     let c = root.blendedColors.colPrimaryContainer

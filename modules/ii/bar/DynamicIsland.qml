@@ -58,9 +58,16 @@ Item {
     // material pill from this (+10 padding), so the outer pill glides along with the morph for
     // free -- and because the shell reads it instead of feeding it, the shell is free to overdraw
     // its own bounds on hover without any of it looping back.
+    //
+    // elementMoveSmall, not elementMoveFast: the fast preset is the 200ms *effects* curve, meant
+    // for fades, and a 400px morph on it reads as a snap. This is the 350ms expressive spatial
+    // curve, whose slight overshoot is what makes the pill land rather than stop. It also drops
+    // alwaysRunToEnd, which the fast preset sets -- and this property is retargeted mid-flight
+    // (a track change edits collapsedWidth while the pill is still moving), where two
+    // run-to-completion animations on one property just judder.
     property real animatedWidth: root.targetWidth
     Behavior on animatedWidth {
-        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        animation: Appearance.animation.elementMoveSmall.numberAnimation.createObject(this)
     }
 
     // 0 at rest, 1 when hovered: closes the gap to the outer pill on all four sides at once.
@@ -68,7 +75,12 @@ Item {
     // needs yScale 1.25, which would stretch the text with it.
     // Held open through a drag as well: the pointer can leave a 32px-tall pill sideways without
     // meaning to let go, and having the shell shrink halfway through the gesture reads as a glitch.
-    property real hoverGrow: ((mouseArea.containsMouse || mouseArea.dragActive) && !root.expanded) ? 1 : 0
+    // Held open while expanded too, which is the important one: without it, clicking the pill open
+    // dropped it from 40px tall to 32px at the same moment it started growing sideways, so the
+    // morph began with a visible vertical squash. Expanded, the shell now fills its socket exactly
+    // -- same width, same height as the outer material pill -- which is what makes the open island
+    // read as one surface instead of a pill inside a pill.
+    property real hoverGrow: (root.expanded || mouseArea.containsMouse || mouseArea.dragActive) ? 1 : 0
     Behavior on hoverGrow {
         animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
     }
@@ -495,8 +507,19 @@ Item {
             height: implicitHeight
             opacity: root.expanded ? 0 : 1
 
+            // Asymmetric on purpose, and the clock below matches. Opening, the collapsed content
+            // has to be gone *before* the field arrives or the two overlap inside a pill that is
+            // still narrow, which is the part that read as a jumble: 120ms out on an accel curve
+            // clears it in the first third of the 350ms morph. Closing, it comes back slower and
+            // on a decel curve, arriving as the pill finishes shrinking around it.
             Behavior on opacity {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                NumberAnimation {
+                    duration: root.expanded ? 120 : 260
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: root.expanded
+                        ? Appearance.animationCurves.emphasizedAccel
+                        : Appearance.animationCurves.emphasizedDecel
+                }
             }
 
             FadeLoader {
@@ -551,19 +574,46 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             opacity: root.expanded ? 0 : 1
 
+            // Same asymmetry as contextArea above -- out fast, back slowly.
             Behavior on opacity {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                NumberAnimation {
+                    duration: root.expanded ? 120 : 260
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: root.expanded
+                        ? Appearance.animationCurves.emphasizedAccel
+                        : Appearance.animationCurves.emphasizedDecel
+                }
             }
         }
 
         // Fills the shell rather than centring, because the field has to stretch across it.
+        //
+        // The loader is never gated on the morph's progress, only the content's opacity is: the
+        // field has to exist from the first frame so IslandSearchField's Component.onCompleted can
+        // take focus, or the first keystrokes after Alt+Space land nowhere.
         FadeLoader {
             id: searchLoader
             anchors.fill: parent
             anchors.leftMargin: root.horizontalPadding
             anchors.rightMargin: root.horizontalPadding
             shown: IslandState.searchActive
-            sourceComponent: IslandSearchField {}
+
+            // What *is* gated is what you see. The field is laid out at the shell's current width,
+            // so early in the morph its mode chips, hairline, input and close button are crushed
+            // into a quarter of the room they need -- and clipped by the shell. Holding them back
+            // until the pill has actually opened up skips that frame entirely. Clamped to the
+            // pill's own final inner width, so a hand-lowered island.searchWidth still reveals it
+            // rather than leaving the pill permanently blank.
+            readonly property real revealWidth: Math.min(
+                searchLoader.item?.naturalWidth ?? Infinity,
+                Config.options.bar.island.searchWidth - root.horizontalPadding * 2)
+
+            sourceComponent: IslandSearchField {
+                opacity: searchLoader.width >= searchLoader.revealWidth ? 1 : 0
+                Behavior on opacity {
+                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                }
+            }
         }
     }
 }
