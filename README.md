@@ -24,6 +24,7 @@ This is my daily desktop shell, kept in the open so it can be reinstalled, shown
 - **Per-app dock glow** — each icon casts a bloom in its own colours.
 - **Glass popups** frosted by the compositor, and a steadier, faster Dynamic Island.
 - **Actionable notifications** — translucent toasts with a countdown ring, the sender's own actions inline, and a "+N more" pill so a burst never covers the screen.
+- **My Hyprland config** in [`hypr/`](hypr/) — keybinds, window rules and the compositor-side layer rules the glass look depends on. See [`hypr/README.md`](hypr/README.md).
 
 > This is a personal setup, not a distro. It is opinionated and tuned to my machine, but it installs cleanly next to a normal illogical-impulse setup without touching it.
 
@@ -58,6 +59,14 @@ cd end4-pC
 ```
 
 `install.sh` checks that quickshell, Hyprland and illogical-impulse are present, links this checkout in as the `end4-pC` config, installs the supervised launcher into `~/.local/bin`, and prints the keybinds to add. It refuses to run — changing nothing — if a requirement is missing or a different config directory is already in the way, so it is safe to re-run.
+
+To install my Hyprland config along with it — keybinds, window rules and the layer rules the glass look needs — add `--hypr`:
+
+```bash
+./install.sh --hypr
+```
+
+That symlinks `hypr/` into `~/.config/hypr/`, keeping anything already there as a `.bak-<timestamp>` and never touching upstream's `hyprland/` directory. `--hypr-only` installs just the compositor side. Details in [`hypr/README.md`](hypr/README.md).
 
 > [!NOTE]
 > The config directory is named `end4-pC` on purpose: internal IPC names and the launcher refer to it. Cloning into that folder name is the supported path.
