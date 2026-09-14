@@ -3,19 +3,17 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
-import qs.modules.ii.sidebarRight
-import qs.modules.ii.sidebarRight.calendar
-import qs.modules.ii.sidebarRight.todo
-import qs.modules.ii.sidebarRight.pomodoro
 import QtQuick
 import QtQuick.Layouts
 
 /**
  * The dashboard that grows out of the island on left-click.
  *
- * Every panel in here is an existing widget from the right sidebar, used as-is: the notification
- * list, the calendar, the to-do list and the pomodoro timer are all self-contained and already
- * expect to be sized by whatever holds them. Nothing about them is reimplemented.
+ * None of the three tabs reuses a right-sidebar widget any more. Every one of them assumed an
+ * opaque container and a page's worth of height: they drew their own filled panel, which stacks
+ * alpha on this card and reads as a grey slab, and they opened with a full tab bar, which put four
+ * sub-tabs across one card once Focus's two pairs were counted. Overview and Focus are built from
+ * the four Island*Panel files beside this one -- see those for the specifics.
  *
  * There is no Quick tab. The toggle grid's expand arrows open dialogs that are implemented inside
  * SidebarRightContent, and QuickSliders resolves its brightness monitor through QsWindow, which
@@ -27,14 +25,14 @@ Rectangle {
 
     readonly property var tabs: [
         {
-            "id": "overview",
-            "icon": "dashboard",
-            "label": Translation.tr("Overview")
-        },
-        {
             "id": "focus",
             "icon": "task_alt",
             "label": Translation.tr("Focus")
+        },
+        {
+            "id": "overview",
+            "icon": "dashboard",
+            "label": Translation.tr("Overview")
         },
         {
             "id": "media",
@@ -42,10 +40,6 @@ Rectangle {
             "label": Translation.tr("Media")
         }
     ]
-
-    // Panels sit on this, so it carries the frost: alpha above the ignore_alpha = 0.79 floor in
-    // hyprland/rules.lua is what lets the shared quickshell:.* blur rule apply at all.
-    readonly property color panelColor: Appearance.m3colors.m3surfaceContainerHigh
 
     implicitWidth: Config.options.bar.island.panelWidth
     // Lyrics want the extra room; the card animates between the two so switching tabs reshapes
@@ -128,12 +122,12 @@ Rectangle {
             Layout.fillHeight: true
             sourceComponent: {
                 switch (IslandState.dashboardTab) {
-                case "focus":
-                    return focusTab;
+                case "overview":
+                    return overviewTab;
                 case "media":
                     return mediaTab;
                 default:
-                    return overviewTab;
+                    return focusTab;
                 }
             }
         }
@@ -143,29 +137,28 @@ Rectangle {
         id: overviewTab
 
         RowLayout {
-            spacing: 10
+            spacing: 12
 
-            CenterWidgetGroup {
+            IslandNotificationsPanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.preferredWidth: 1
-                color: root.panelColor
             }
 
+            // Splits the two columns without boxing either of them. A filled panel would stack
+            // alpha on the card underneath and read as a grey slab; a hairline does not.
             Rectangle {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 1
-                Layout.fillWidth: true
-                radius: Appearance.rounding.normal
-                color: root.panelColor
-                clip: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+                implicitWidth: 1
+                color: ColorUtils.transparentize(Appearance.colors.colOutlineVariant, 0.5)
+            }
 
-                CalendarWidget {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.topMargin: 4
-                }
+            IslandCalendarPanel {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredWidth: 1
             }
         }
     }
@@ -174,32 +167,26 @@ Rectangle {
         id: focusTab
 
         RowLayout {
-            spacing: 10
+            spacing: 12
 
-            Rectangle {
+            IslandTasksPanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.preferredWidth: 1
-                radius: Appearance.rounding.normal
-                color: root.panelColor
-                clip: true
-
-                TodoWidget {
-                    anchors.fill: parent
-                }
             }
 
             Rectangle {
+                Layout.fillHeight: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+                implicitWidth: 1
+                color: ColorUtils.transparentize(Appearance.colors.colOutlineVariant, 0.5)
+            }
+
+            IslandTimerPanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.preferredWidth: 1
-                radius: Appearance.rounding.normal
-                color: root.panelColor
-                clip: true
-
-                PomodoroWidget {
-                    anchors.fill: parent
-                }
             }
         }
     }
