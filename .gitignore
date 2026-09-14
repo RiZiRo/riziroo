@@ -7,3 +7,6 @@ __pycache__/
 
 # Knowledge-graph output, regenerated on demand
 graphify-out/
+
+# Superseded module snapshots kept for local reference only
+.archive/
