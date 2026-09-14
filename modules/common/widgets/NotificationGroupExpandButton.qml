@@ -10,8 +10,13 @@ RippleButton { // Expand button
     required property bool expanded
     property real fontSize: Appearance?.font.pixelSize.small ?? 12
     property real iconSize: Appearance?.font.pixelSize.normal ?? 16
-    implicitHeight: fontSize + 4 * 2
-    implicitWidth: Math.max(contentItem.implicitWidth + 5 * 2, 30)
+    // Square and icon-only, so a progress ring drawn around it is a true circle rather than a
+    // stadium. Used on toasts, where the stacked cards already say how many there are; the lists
+    // keep the counted pill, since a collapsed group there shows nothing else.
+    property bool compact: false
+    readonly property real baseSize: fontSize + 4 * 2
+    implicitHeight: root.baseSize
+    implicitWidth: root.compact ? root.baseSize : Math.max(contentItem.implicitWidth + 5 * 2, 30)
     Layout.alignment: Qt.AlignVCenter
     Layout.fillHeight: false
 
@@ -29,7 +34,7 @@ RippleButton { // Expand button
             spacing: 3
             StyledText {
                 Layout.leftMargin: 4
-                visible: root.count > 1
+                visible: root.count > 1 && !root.compact
                 text: root.count
                 font.pixelSize: root.fontSize
             }

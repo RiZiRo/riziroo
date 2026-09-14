@@ -54,6 +54,11 @@ Scope {
             anchors.bottomMargin: 4
             width: Appearance.sizes.notificationPopupWidth
             popup: true
+            maxGroups: Config.options.notifications.maxVisiblePopups ?? 3
+            // Enters from whichever edge it is anchored to. The centred positions have no edge to
+            // come from, so they slide in from the right like the default does.
+            slideIn: true
+            slideFrom: root.isLeft ? -width : width
             verticalLayoutDirection: root.isBottom ? ListView.BottomToTop : ListView.TopToBottom
 
             states: [

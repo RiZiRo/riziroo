@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import qs.modules.common
+import qs.services
 import qs
 import QtQuick
 import Quickshell
@@ -34,6 +35,12 @@ Singleton {
         property double time
         property string urgency: notification?.urgency.toString() ?? "normal"
         property Timer timer
+        // Mirrors of the timer's state, for the popup's countdown bar. Kept here rather than read
+        // off `timer` directly because NotifTimer destroys itself when it fires, which would leave
+        // anything bound to it dangling. `timerStartedAt` is reassigned on every restart, so the
+        // countdown animation has a change to key off.
+        property int timerInterval: 0
+        property double timerStartedAt: 0
 
         onNotificationChanged: {
             if (notification === null) {
@@ -67,6 +74,9 @@ Singleton {
             const index = root.list.findIndex((notif) => notif.notificationId === notificationId);
             const notifObject = root.list[index];
             print("[Notifications] Notification timer triggered for ID: " + notificationId + ", transient: " + notifObject?.isTransient);
+            // Guarded: a notification the sender withdrew, or one dismissed by hand a frame before
+            // its timer fired, is already gone from the list -- which used to throw here.
+            if (!notifObject) { destroy(); return; }
             if (notifObject.isTransient) root.discardNotification(notificationId);
             else root.timeoutNotification(notificationId);
             destroy()
@@ -170,14 +180,24 @@ Singleton {
 
             // Popup
             if (!root.popupInhibited) {
-                newNotifObject.popup = true;
+                // Stamped BEFORE `popup` flips, not after. Setting popup = true is what puts the
+                // notification into popupList, which builds the toast delegate synchronously -- so
+                // assigning the interval afterwards meant the delegate was born with timerInterval
+                // still 0, showed no countdown for a frame, and then faded one in once the value
+                // landed. Now the countdown is valid the instant the card exists.
                 if (notification.expireTimeout != 0) {
+                    newNotifObject.timerInterval = notification.expireTimeout < 0 ? (Config?.options.notifications.timeout ?? 7000) : notification.expireTimeout;
+                    newNotifObject.timerStartedAt = Date.now();
+                }
+                newNotifObject.popup = true;
+                if (newNotifObject.timerInterval > 0) {
                     newNotifObject.timer = notifTimerComponent.createObject(root, {
                         "notificationId": newNotifObject.notificationId,
-                        "interval": notification.expireTimeout < 0 ? (Config?.options.notifications.timeout ?? 7000) : notification.expireTimeout,
+                        "interval": newNotifObject.timerInterval,
                     });
                 }
                 root.unread++;
+                root.playArrivalSound(newNotifObject);
             }
             root.notify(newNotifObject);
             // console.log(notifToString(newNotifObject));
@@ -216,8 +236,30 @@ Singleton {
 
     function cancelTimeout(id) {
         const index = root.list.findIndex((notif) => notif.notificationId === id);
-        if (root.list[index] != null)
+        // A notification sent with expireTimeout == 0 never gets a timer, and one whose timer has
+        // already fired has destroyed it. Both used to throw here on every hover.
+        if (root.list[index]?.timer)
             root.list[index].timer.stop();
+    }
+
+    /**
+     * Resumes a popup's countdown after a hover. Deliberately a restart rather than a resume: Qt's
+     * Timer has no resume, so the alternative is tracking elapsed time and recreating the timer
+     * with a shortened interval -- which the countdown bar could never stay in sync with anyway.
+     * Restarting from full is also what GNOME and KDE do.
+     */
+    function restartTimeout(id) {
+        const notif = root.list.find((candidate) => candidate.notificationId === id);
+        if (!notif || !notif.popup || notif.timerInterval <= 0)
+            return;
+        notif.timerStartedAt = Date.now();
+        if (notif.timer)
+            notif.timer.restart();
+        else
+            notif.timer = notifTimerComponent.createObject(root, {
+                "notificationId": id,
+                "interval": notif.timerInterval,
+            });
     }
 
     function timeoutNotification(id) {
@@ -244,12 +286,43 @@ Singleton {
             const notifServerNotif = notifServer.trackedNotifications.values[notifServerIndex];
             const action = notifServerNotif.actions.find((action) => action.identifier === notifIdentifier);
             // console.log("Action found: " + JSON.stringify(action));
-            action.invoke()
-        } 
+            // Guarded: left-clicking a card now routes through here, and a sender that withdrew the
+            // action between the notification arriving and the click would otherwise throw.
+            if (action) action.invoke()
+        }
         else {
             console.log("Notification not found in server: " + id)
         }
         root.discardNotification(id);
+    }
+
+    /**
+     * What a left-click on a notification does -- the "click it to open the app" every other
+     * desktop has. Most senders ship an action with the identifier "default" for exactly this;
+     * a sender with just one unnamed action means that one.
+     *
+     * With no action to invoke, the click only dismisses the popup and leaves the notification in
+     * the list, rather than silently discarding something the user may still want to read.
+     */
+    function invokeDefault(id) {
+        const notif = root.list.find((candidate) => candidate.notificationId === id);
+        if (!notif) return;
+        const actions = notif.actions ?? [];
+        const action = actions.find((candidate) => candidate.identifier === "default")
+            ?? (actions.length === 1 ? actions[0] : null);
+        if (action)
+            root.attemptInvokeAction(id, action.identifier);
+        else
+            root.timeoutNotification(id);
+    }
+
+    /**
+     * The arrival sound. Uses the same freedesktop theme and helper as the battery and pomodoro
+     * alerts (services/Audio.qml), so it follows Config.options.sounds.theme along with them.
+     */
+    function playArrivalSound(notif) {
+        if (!(Config?.options.sounds.notifications ?? false)) return;
+        Audio.playSystemSound(notif.urgency === NotificationUrgency.Critical.toString() ? "dialog-warning" : "message");
     }
 
     function triggerListChange() {

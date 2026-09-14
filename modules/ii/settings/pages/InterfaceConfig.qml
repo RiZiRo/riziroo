@@ -662,6 +662,76 @@ ContentPage {
                     }
                 }
             }
+
+            ContentSubsection {
+                title: Translation.tr("Icon glow")
+                Layout.fillWidth: true
+
+                GroupedList {
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "flare"
+                        text: Translation.tr("Glow app icons in their own colors")
+                        checked: Config.options.dock.iconGlow.enable
+                        onCheckedChanged: { Config.options.dock.iconGlow.enable = checked }
+                    }
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        visible: Config.options.dock.iconGlow.enable
+                        buttonIcon: "animation"
+                        text: Translation.tr("Breathing pulse")
+                        checked: Config.options.dock.iconGlow.pulse
+                        onCheckedChanged: { Config.options.dock.iconGlow.pulse = checked }
+                    }
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        visible: Config.options.dock.iconGlow.enable
+                        buttonIcon: "filter_alt"
+                        text: Translation.tr("Only glow running apps")
+                        checked: Config.options.dock.iconGlow.activeOnly
+                        onCheckedChanged: { Config.options.dock.iconGlow.activeOnly = checked }
+                    }
+                    ConfigSlider {
+                        visible: Config.options.dock.iconGlow.enable
+                        text: Translation.tr("Strength")
+                        value: Config.options.dock.iconGlow.strength
+                        usePercentTooltip: false
+                        buttonIcon: "brightness_high"
+                        from: 0
+                        to: 220
+                        stopIndicatorValues: [100]
+                        onValueChanged: {
+                            Config.options.dock.iconGlow.strength = Math.round(value);
+                        }
+                    }
+                    ConfigSlider {
+                        visible: Config.options.dock.iconGlow.enable
+                        text: Translation.tr("Halo size")
+                        value: Config.options.dock.iconGlow.spread
+                        usePercentTooltip: false
+                        buttonIcon: "blur_on"
+                        from: 60
+                        to: 200
+                        stopIndicatorValues: [100]
+                        onValueChanged: {
+                            Config.options.dock.iconGlow.spread = Math.round(value);
+                        }
+                    }
+                    ConfigSlider {
+                        visible: Config.options.dock.iconGlow.enable
+                        text: Translation.tr("Extra saturation")
+                        value: Config.options.dock.iconGlow.saturation
+                        usePercentTooltip: false
+                        buttonIcon: "colors"
+                        from: 0
+                        to: 100
+                        stopIndicatorValues: [45]
+                        onValueChanged: {
+                            Config.options.dock.iconGlow.saturation = Math.round(value);
+                        }
+                    }
+                }
+            }
         }
 
         ContentSection {

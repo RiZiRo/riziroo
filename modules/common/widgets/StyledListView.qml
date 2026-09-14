@@ -15,6 +15,12 @@ ListView {
     property bool popin: true
     property bool animateAppearance: true
     property bool animateMovement: false
+    // Enter by travelling in from an edge instead of only fading up. `slideFrom` is the starting x
+    // offset, so a caller anchored to the right passes +width and one on the left passes -width.
+    // Done here rather than as a Hyprland layer animation because the notification popup's window
+    // spans the whole screen -- animating the layer would drag the entire surface across it.
+    property bool slideIn: false
+    property real slideFrom: 0
     // Accumulated scroll destination so wheel deltas stack while animating
     property real scrollTargetY: 0
 
@@ -69,13 +75,26 @@ ListView {
     }
 
     add: Transition {
-        animations: animateAppearance ? [
-            Appearance?.animation.elementMove.numberAnimation.createObject(this, {
-                properties: popin ? "opacity,scale" : "opacity",
-                from: 0,
-                to: 1,
-            }),
-        ] : []
+        animations: {
+            if (!root.animateAppearance) return [];
+            const anims = [
+                Appearance?.animation.elementMove.numberAnimation.createObject(this, {
+                    properties: (root.popin && !root.slideIn) ? "opacity,scale" : "opacity",
+                    from: 0,
+                    to: 1,
+                }),
+            ];
+            if (root.slideIn) {
+                // elementMoveSmall is the expressiveFastSpatial preset -- the same curve the
+                // island's morph runs on, so a toast arriving reads like the rest of the shell.
+                anims.push(Appearance?.animation.elementMoveSmall.numberAnimation.createObject(this, {
+                    property: "x",
+                    from: root.slideFrom,
+                    to: 0,
+                }));
+            }
+            return anims;
+        }
     }
 
     addDisplaced: Transition {

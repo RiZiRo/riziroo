@@ -707,6 +707,14 @@ Singleton {
             property JsonObject notifications: JsonObject {
                 property int timeout: 7000
                 property string position: "top_right"
+                // 0 = solid card, 1 = fully see-through. The blur behind it comes from the
+                // `quickshell:notificationPopup` layer rules in ~/.config/hypr/custom/rules.lua --
+                // the same recipe as the dock and the bar popups.
+                property real transparency: 0.55
+                property int maxVisiblePopups: 3 // Extras collapse into a "+N more" pill
+                property bool showProgress: true // Countdown bar along the bottom of a toast
+                property bool showActions: true // The sender's own actions, on the toast itself
+                property bool clickToActivate: true // Left-click invokes the "default" action
             }
 
             property JsonObject osd: JsonObject {
@@ -901,6 +909,7 @@ Singleton {
 
             property JsonObject sounds: JsonObject {
                 property bool battery: false
+                property bool notifications: true
                 property bool pomodoro: false
                 property string theme: "freedesktop"
             }
