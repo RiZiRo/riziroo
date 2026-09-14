@@ -1,6 +1,10 @@
 pragma ComponentBehavior: Bound
 
+import qs.modules.common
+import Qt.labs.folderlistmodel
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 QtObject {
     id: root
@@ -39,15 +43,68 @@ QtObject {
         {text: "توانا بود هر که دانا بود ز دانش دل پیر برنا بود", source: "فردوسی"}
     ]
 
-    readonly property var profiles: [
-        {key: "english", label: "English 200", direction: "ltr"},
-        {key: "english_1k", label: "English 1k", direction: "ltr"},
-        {key: "english_5k", label: "English 5k", direction: "ltr"},
-        {key: "persian", label: "Persian", direction: "rtl"},
-        {key: "code_javascript", label: "JavaScript", direction: "ltr"},
-        {key: "code_python", label: "Python", direction: "ltr"},
-        {key: "code_rust", label: "Rust", direction: "ltr"}
+    // Packs that live inside the shell and are compiled into the QML above. They
+    // cost nothing to reach, so the default profile never touches the filesystem.
+    readonly property var builtinProfiles: [
+        {key: "english", label: "english", direction: "ltr", kind: "words"},
+        {key: "english_1k", label: "english 1k", direction: "ltr", kind: "words"},
+        {key: "english_5k", label: "english 5k", direction: "ltr", kind: "words"},
+        {key: "persian", label: "persian", direction: "rtl", kind: "words"},
+        {key: "code_javascript", label: "javascript", direction: "ltr", kind: "words"},
+        {key: "code_python", label: "python", direction: "ltr", kind: "words"},
+        {key: "code_rust", label: "rust", direction: "ltr", kind: "words"}
     ]
+
+    // Packs shipped as JSON next to the shell. They are read the first time the
+    // profile is selected and then cached, so a 10k-word list costs one read.
+    readonly property var shippedProfiles: [
+        {key: "english_10k", label: "english 10k", direction: "ltr", kind: "words", file: "english_10k.json"},
+        {key: "english_commonly_misspelled", label: "commonly misspelled", direction: "ltr", kind: "words", file: "english_commonly_misspelled.json"},
+        {key: "quotes_english", label: "english quotes", direction: "ltr", kind: "quotes", file: "quotes_english.json"}
+    ]
+
+    property var discoveredProfiles: []
+    property var packCache: ({})
+    property int packGeneration: 0
+
+    readonly property var profiles: builtinProfiles.concat(shippedProfiles).concat(discoveredProfiles)
+
+    function profileFor(key) {
+        for (let i = 0; i < profiles.length; ++i)
+            if (profiles[i].key === key) return profiles[i];
+        return profiles[0];
+    }
+
+    function labelFor(key) {
+        return profileFor(key).label;
+    }
+
+    // Reads an external pack synchronously. FileView.blockLoading only blocks the
+    // first load of a given object — reusing one reader for several paths hands
+    // back the previous file's text — so each read gets a fresh, short-lived one.
+    function loadPack(key) {
+        if (packCache[key] !== undefined) return packCache[key];
+        const profile = profileFor(key);
+        if (!profile || !profile.file) return null;
+        const path = profile.path
+            ? `${profile.path}/${profile.file}`
+            : `${Quickshell.shellPath("defaults/typingTest/languages")}/${profile.file}`;
+        let parsed = null;
+        let reader = null;
+        try {
+            reader = packReader.createObject(root, {path: path});
+            parsed = reader ? parsePack(reader.text()) : {valid: false, message: "reader unavailable"};
+        } catch (error) {
+            parsed = {valid: false, message: String(error)};
+        } finally {
+            if (reader) reader.destroy();
+        }
+        const cache = packCache;
+        cache[key] = parsed && parsed.valid ? parsed : null;
+        packCache = cache;
+        packGeneration++;
+        return cache[key];
+    }
 
     function wordsFor(profile) {
         switch (profile) {
@@ -57,18 +114,62 @@ QtObject {
         case "code_javascript": return javascript;
         case "code_python": return python;
         case "code_rust": return rust;
-        default: return english200;
+        case "english": return english200;
         }
+        const pack = loadPack(profile);
+        // A quote-only pack still needs words behind it when the user is in
+        // words or time mode, so fall back rather than showing an empty test.
+        return pack && pack.kind === "words" && pack.words.length > 0 ? pack.words : english200;
     }
 
     function quotesFor(profile) {
-        return profile === "persian" ? persianQuotes : englishQuotes;
+        if (profile === "persian") return persianQuotes;
+        const pack = loadPack(profile);
+        if (pack && pack.kind === "quotes" && pack.quotes.length > 0) return pack.quotes;
+        const shipped = loadPack("quotes_english");
+        if (shipped && shipped.kind === "quotes" && shipped.quotes.length > 0)
+            return englishQuotes.concat(shipped.quotes);
+        return englishQuotes;
     }
 
     function directionFor(profile) {
-        return profile === "persian" ? "rtl" : "ltr";
+        return profileFor(profile).direction === "rtl" ? "rtl" : "ltr";
     }
 
+    // User packs are any Monkeytype-shaped JSON dropped in the languages folder.
+    function refreshUserPacks() {
+        const found = [];
+        for (let i = 0; i < userPackFolder.count; ++i) {
+            const name = String(userPackFolder.get(i, "fileName") || "");
+            if (!name.endsWith(".json")) continue;
+            const key = `user_${name.slice(0, -5)}`;
+            found.push({
+                key: key,
+                label: name.slice(0, -5).replace(/[_-]/g, " "),
+                direction: "ltr",
+                kind: "unknown",
+                file: name,
+                path: Directories.typingTestLanguagesUser,
+                user: true
+            });
+        }
+        discoveredProfiles = found;
+        packCache = ({});
+        packGeneration++;
+    }
+
+    property FolderListModel userPackFolder: FolderListModel {
+        folder: `file://${Directories.typingTestLanguagesUser}`
+        nameFilters: ["*.json"]
+        showDirs: false
+        onCountChanged: root.refreshUserPacks()
+    }
+
+    // Setting `path` at construction makes it that object's first load, which
+    // blockLoading performs synchronously.
+    property Component packReader: Component {
+        FileView { blockLoading: true }
+    }
     function parsePack(text) {
         try {
             const value = JSON.parse(text);

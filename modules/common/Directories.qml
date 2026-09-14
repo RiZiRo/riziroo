@@ -43,6 +43,8 @@ Singleton {
     property string typingTestDataDir: `${Directories.typingTestHistoryDir}/typingTest`
     property string typingTestIndexPath: `${Directories.typingTestDataDir}/index.json`
     property string typingTestDetailsPath: `${Directories.typingTestDataDir}/details.json`
+    // Drop Monkeytype-shaped JSON here to add languages/quotes without touching the shell
+    property string typingTestLanguagesUser: FileUtils.trimFileProtocol(`${Directories.shellConfig}/typingTest/languages`)
     property string islandFrecencyPath: FileUtils.trimFileProtocol(`${Directories.state}/user/island_frecency.json`)
 	property string notesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/notes.txt`)
     property string desktopNotesPath: FileUtils.trimFileProtocol(`${Directories.state}/user/desktopnotes.txt`)
@@ -81,6 +83,7 @@ Singleton {
         Quickshell.execDetached(["mkdir", "-p", `${aiChats}`])
         Quickshell.execDetached(["mkdir", "-p", `${typingTestHistoryDir}`])
         Quickshell.execDetached(["mkdir", "-p", `${typingTestDataDir}`])
+        Quickshell.execDetached(["mkdir", "-p", `${typingTestLanguagesUser}`])
         Quickshell.execDetached(["mkdir", "-p", `${userActions}`])
         Quickshell.execDetached(["mkdir", "-p", `${eqStateDir}`])
         Quickshell.execDetached(["rm", "-rf", `${tempImages}`])

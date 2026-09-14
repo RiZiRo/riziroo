@@ -29,9 +29,18 @@ Item {
     property string lastRebuildReason: "initial"
     property bool smoothViewport: true
     readonly property bool memoryHidden: settings.trainer === "memory" && engine.phase === "running"
-    readonly property real glyphSize: Math.max(25, Math.min(38, width / 38))
-    readonly property real glyphWidth: Math.max(15, glyphSize * 0.61)
+    // Tuned so a default-width floating panel fits roughly 50 characters per
+    // line, which is what Monkeytype shows at its default font size.
+    readonly property real glyphSize: Math.max(20, Math.min(40, width / 31)) * settings.fontScale
+    readonly property real glyphWidth: Math.max(12, glyphSize * 0.61)
     readonly property real lineHeight: glyphSize * 1.55
+    // Monkeytype counts down seconds in time mode and counts words otherwise.
+    readonly property string progressLabel: {
+        if (settings.mode === "time") return `${engine.timeRemaining}`;
+        if (settings.mode === "words") return `${engine.currentWordIndex}/${settings.testLength}`;
+        if (settings.mode === "zen") return `${engine.currentWordIndex}`;
+        return `${engine.currentWordIndex}/${Math.max(1, engine.targetWords.length)}`;
+    }
     readonly property int activeDelegateCount: {
         let total = 0;
         for (const item of visibleWords) total += item.word.length + 1;
@@ -163,12 +172,21 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 16
+        // Kept tight: six rows at 16px spacing cost 80px, which is the
+        // difference between the keyboard fitting and overlapping the hints
+        // at the minimum panel height.
+        spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 20
+            spacing: 14
             visible: root.settings.timerStyle !== "off" || root.settings.liveSpeedStyle !== "off" || root.settings.liveAccStyle !== "off" || root.settings.liveBurstStyle !== "off"
-            StyledText { visible: root.settings.timerStyle !== "off"; text: String(root.engine.timeRemaining); color: root.theme.main; font.family: Appearance.font.family.monospace; font.pixelSize: root.settings.timerStyle === "mini" ? 12 : 16 }
+            // Monkeytype shows nothing until the first keystroke, but the row
+            // keeps its height so the words do not jump when it appears.
+            opacity: root.engine.phase === "ready" ? 0 : 1
+            Behavior on opacity { NumberAnimation { duration: 140 } }
+            StyledText { visible: root.settings.timerStyle !== "off"; text: root.progressLabel; color: root.theme.main; font.family: Appearance.font.family.monospace; font.pixelSize: root.settings.timerStyle === "mini" ? 14 : 18 }
             StyledText { visible: root.settings.liveSpeedStyle !== "off"; text: `${root.engine.wpm} wpm`; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 12 }
             StyledText { visible: root.settings.liveAccStyle !== "off"; text: `${root.engine.accuracy}% acc`; color: root.engine.accuracy < 90 ? root.theme.error : root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 12 }
             StyledText { visible: root.settings.liveBurstStyle !== "off"; text: `${root.engine.peakBurst} burst`; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 12 }
@@ -185,11 +203,17 @@ Item {
             Rectangle { height: parent.height; width: parent.width * root.engine.progress; radius: parent.radius; color: root.theme.main }
         }
 
+        // Spacers above and below the word block centre it in whatever space the
+        // keyboard leaves, the way Monkeytype does.
+        Item { Layout.fillHeight: true; Layout.minimumHeight: 0 }
+
         Flickable {
             id: typingViewport
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumHeight: 220
+            // Exactly three lines: a partially visible fourth line reads as a
+            // rendering bug rather than as more text to come.
+            Layout.preferredHeight: root.lineHeight * 3
+            Layout.maximumHeight: root.lineHeight * 3
             clip: true
             interactive: false
             boundsBehavior: Flickable.StopAtBounds
@@ -297,18 +321,28 @@ Item {
 
         StyledText {
             Layout.alignment: Qt.AlignHCenter
-            visible: root.engine.phase === "ready"
+            Layout.topMargin: 10
+            // Drops out first when the panel is too short for everything.
+            visible: root.engine.phase === "ready" && root.height > 400
             text: "start typing"
             color: root.theme.sub
             font.family: Appearance.font.family.monospace
             font.pixelSize: 11
         }
 
+        Item { Layout.fillHeight: true; Layout.minimumHeight: 0 }
+
         TypingKeyboard {
             visible: root.settings.keyboardMode !== "off"
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: Math.min(parent.width, 680) * root.settings.keyboardScale
-            Layout.preferredHeight: 175 * root.settings.keyboardScale
+            Layout.topMargin: 8
+            Layout.fillWidth: true
+            Layout.maximumWidth: Math.min(root.width, 680) * root.settings.keyboardScale
+            // Four 40px rows plus three 7px gaps at full size. The board scales
+            // itself down inside this box rather than clipping its last row.
+            Layout.preferredHeight: 181 * root.settings.keyboardScale
+            Layout.maximumHeight: 181 * root.settings.keyboardScale
+            Layout.minimumHeight: 84
             highlightedCharacter: root.settings.keyboardMode === "next" ? (root.engine.targetText[root.engine.typedLength] || "") : root.engine.lastCharacter
             keySerial: root.engine.lastKeySerial
             mode: root.settings.keyboardMode

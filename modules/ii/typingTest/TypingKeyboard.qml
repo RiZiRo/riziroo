@@ -11,6 +11,19 @@ Item {
     property int keySerial: 0
     property string mode: "react"
     property string labelStyle: "lowercase"
+    // "next" mode feeds the upcoming target character, which may be capitalized
+    // or a shifted symbol, so matching has to ignore case and shift pairs.
+    readonly property string activeKey: {
+        const raw = root.highlightedCharacter;
+        if (raw.length !== 1) return raw;
+        const lower = raw.toLowerCase();
+        return root.shiftPairs[raw] ?? lower;
+    }
+    readonly property var shiftPairs: ({
+        "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7",
+        "*": "8", "(": "9", ")": "0", "_": "-", "+": "=", "{": "[", "}": "]",
+        ":": ";", "\"": "'", "<": ",", ">": ".", "?": "/", "|": "\\", "~": "`"
+    })
     property color mainColor: Appearance.colors.colPrimary
     property color textColor: Appearance.colors.colOnLayer2
     property color mutedColor: Appearance.colors.colOutlineVariant
@@ -21,46 +34,60 @@ Item {
         ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"]
     ]
 
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 7
+    // The layout below is fixed-size; the whole board is scaled to whatever box
+    // it is given so a short panel shrinks it instead of clipping the last row.
+    readonly property real naturalWidth: 12 * 46 + 11 * 7
+    readonly property real naturalHeight: 4 * 40 + 3 * 7
 
-        Repeater {
-            model: root.rows
-            delegate: RowLayout {
-                id: keyRow
-                required property var modelData
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 7
+    Item {
+        id: board
+        width: root.naturalWidth
+        height: root.naturalHeight
+        anchors.centerIn: parent
+        scale: Math.min(1, Math.min(root.width / root.naturalWidth, root.height / root.naturalHeight))
+        transformOrigin: Item.Center
 
-                Repeater {
-                    model: keyRow.modelData
-                    delegate: KeyCap {
-                        required property string modelData
-                        label: modelData
-                        highlighted: root.highlightedCharacter === modelData
-                        triggerSerial: root.keySerial
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 7
+
+            Repeater {
+                model: root.rows
+                delegate: RowLayout {
+                    id: keyRow
+                    required property var modelData
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: 7
+
+                    Repeater {
+                        model: keyRow.modelData
+                        delegate: KeyCap {
+                            required property string modelData
+                            label: modelData
+                            highlighted: root.activeKey === modelData
+                            triggerSerial: root.keySerial
+                        }
                     }
                 }
             }
-        }
 
-        RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            spacing: 7
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 7
 
-            KeyCap {
-                Layout.preferredWidth: 310
-                label: "space"
-                highlighted: root.highlightedCharacter === " "
-                triggerSerial: root.keySerial
-            }
-            KeyCap {
-                Layout.preferredWidth: 96
-                label: "backspace"
-                fontPixelSize: 11
-                highlighted: root.highlightedCharacter === "backspace"
-                triggerSerial: root.keySerial
+                KeyCap {
+                    Layout.preferredWidth: 310
+                    label: "space"
+                    highlighted: root.activeKey === " "
+                    triggerSerial: root.keySerial
+                }
+                KeyCap {
+                    Layout.preferredWidth: 96
+                    label: "backspace"
+                    fontPixelSize: 11
+                    highlighted: root.activeKey === "backspace"
+                    triggerSerial: root.keySerial
+                }
             }
         }
     }

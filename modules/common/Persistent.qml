@@ -69,7 +69,7 @@ Singleton {
             }
 
             property JsonObject typingTest: JsonObject {
-                property int schemaVersion: 3
+                property int schemaVersion: 5
                 property string mode: "words"
                 property int testLength: 100
                 property bool punctuation: false
@@ -78,6 +78,7 @@ Singleton {
                 property string languageProfile: "english"
                 property string language: "english"
                 property string customText: ""
+                property string importPackJson: ""
                 property string quoteLength: "all"
                 property string quoteSearch: ""
                 property bool showKeyboard: false
@@ -112,7 +113,7 @@ Singleton {
                 property string paceCaret: "off"
                 property int paceCaretWpm: 100
                 property string paceCaretStyle: "line"
-                property string keyboardMode: "off"
+                property string keyboardMode: "react"
                 property real keyboardScale: 1
                 property string keyboardLabels: "lowercase"
                 property string typedEffect: "keep"
@@ -125,6 +126,15 @@ Singleton {
                 property bool showKeyTips: true
                 property bool capsLockWarning: true
                 property bool focusWarning: true
+                // Floating panel geometry. -1 means "not placed yet", so the first
+                // open centers itself on whichever monitor it appears on.
+                property real panelX: -1
+                property real panelY: -1
+                property real panelWidth: 1040
+                property real panelHeight: 700
+                property bool followShellColors: false
+                property bool closeOnClickOutside: false
+                property real fontScale: 1
             }
 
             property JsonObject sidebar: JsonObject {

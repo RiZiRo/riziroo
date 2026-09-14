@@ -118,9 +118,13 @@ Item {
         implicitWidth: filterText.implicitWidth + 22
         implicitHeight: 32
         toggled: active
+        colBackground: "transparent"
+        colBackgroundHover: Qt.alpha(root.theme.text, 0.08)
+        colBackgroundToggled: root.theme.main
+        colBackgroundToggledHover: Qt.lighter(root.theme.main, 1.12)
         buttonRadius: 8
         focusPolicy: Qt.NoFocus
-        contentItem: StyledText { id: filterText; text: filterButton.label; color: filterButton.active ? "#000000" : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 }
+        contentItem: StyledText { id: filterText; text: filterButton.label; color: filterButton.active ? root.theme.bg : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 }
     }
     component Metric: Rectangle {
         id: metric

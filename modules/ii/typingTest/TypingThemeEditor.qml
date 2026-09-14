@@ -46,15 +46,18 @@ Item {
             columnSpacing: 8
             rowSpacing: 8
             Repeater {
-                model: root.catalog.presets
+                model: root.catalog.selectableThemes
                 delegate: RippleButton {
+                    id: themeTile
                     required property var modelData
+                    readonly property bool selected: !root.settings.customTheme && root.settings.themeName === themeTile.modelData.key
                     Layout.fillWidth: true
                     implicitHeight: 44
                     buttonRadius: 9
                     focusPolicy: Qt.NoFocus
                     colBackground: modelData.bg
                     colBackgroundHover: modelData.subAlt
+                    border: themeTile.selected
                     onClicked: {
                         root.catalog.themeName = modelData.key;
                         root.catalog.customTheme = false;
@@ -62,8 +65,8 @@ Item {
                         root.settings.customTheme = false;
                     }
                     contentItem: RowLayout {
-                        Rectangle { width: 8; height: 8; radius: 4; color: modelData.main }
-                        StyledText { text: modelData.label; color: modelData.text; font.family: Appearance.font.family.monospace; font.pixelSize: 11 }
+                        Rectangle { width: 8; height: 8; radius: 4; color: themeTile.modelData.main }
+                        StyledText { text: themeTile.modelData.label; color: themeTile.modelData.text; font.family: Appearance.font.family.monospace; font.pixelSize: 11 }
                     }
                 }
             }
@@ -88,14 +91,12 @@ Item {
                         anchors.margins: 8
                         Rectangle { width: 18; height: 18; radius: 5; color: root.catalog.customColors[colorEditor.modelData] || root.catalog.active[colorEditor.modelData] }
                         StyledText { text: colorEditor.modelData.replace(/([A-Z])/g, " $1").toLowerCase(); color: root.catalog.active.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10; Layout.preferredWidth: 106 }
-                        TextField {
+                        TypingField {
                             Layout.fillWidth: true
-                            text: root.catalog.customColors[colorEditor.modelData] || root.catalog.active[colorEditor.modelData]
-                            color: root.catalog.active.text
-                            font.family: Appearance.font.family.monospace
-                            font.pixelSize: 10
-                            selectByMouse: true
-                            onEditingFinished: root.setColor(colorEditor.modelData, text.trim())
+                            Layout.preferredHeight: 28
+                            theme: root.catalog.active
+                            value: root.catalog.customColors[colorEditor.modelData] || root.catalog.active[colorEditor.modelData]
+                            onCommitted: text => root.setColor(colorEditor.modelData, text.trim())
                         }
                     }
                 }
@@ -108,7 +109,7 @@ Item {
             color: catalog.active.subAlt
             radius: 9
             border.width: 1
-            border.color: "#303030"
+            border.color: Qt.alpha(root.catalog.active.sub, 0.4)
             StyledTextArea {
                 id: jsonInput
                 anchors.fill: parent
@@ -127,7 +128,7 @@ Item {
             Layout.fillWidth: true
             StyledText { text: root.statusText || root.catalog.validatePalette(root.catalog.active).message; color: root.catalog.validatePalette(root.catalog.active).warning ? root.catalog.active.error : root.catalog.active.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
             RippleButton { implicitWidth: 110; implicitHeight: 38; buttonRadius: 9; focusPolicy: Qt.NoFocus; onClicked: { root.catalog.resetCustomFromPreset(); root.importText = root.catalog.exportJson(); root.statusText = "Reset to selected preset."; } contentItem: StyledText { text: "reset"; color: root.catalog.active.text; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace } }
-            RippleButton { implicitWidth: 110; implicitHeight: 38; buttonRadius: 9; focusPolicy: Qt.NoFocus; toggled: true; onClicked: root.applyCustom(); contentItem: StyledText { text: "apply JSON"; color: "#000000"; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace } }
+            RippleButton { implicitWidth: 110; implicitHeight: 38; buttonRadius: 9; focusPolicy: Qt.NoFocus; toggled: true; colBackgroundToggled: root.catalog.active.main; colBackgroundToggledHover: Qt.lighter(root.catalog.active.main, 1.12); onClicked: root.applyCustom(); contentItem: StyledText { text: "apply JSON"; color: root.catalog.active.bg; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace } }
         }
     }
 }

@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import qs.modules.common
 import QtQuick
 
 QtObject {
@@ -32,8 +33,23 @@ QtObject {
         palette("solarized_dark", "Solarized Dark", "#002b36", "#859900", "#dc322f", "#2aa198", "#00222b", "#268bd2", "#d33682", "#9b225c")
     ]
 
+    // Not part of `presets` because it is a live binding: picking it makes the
+    // typing test recolor along with the wallpaper-derived shell theme.
+    readonly property var shellPalette: palette("shell", "Follow shell colors",
+        String(Appearance.colors.colLayer0Base),
+        String(Appearance.colors.colPrimary),
+        String(Appearance.colors.colPrimary),
+        String(Appearance.colors.colOnLayer1Inactive),
+        String(Appearance.colors.colLayer1),
+        String(Appearance.colors.colOnLayer0),
+        String(Appearance.colors.colError),
+        String(Appearance.colors.colErrorContainer))
+
+    readonly property var selectableThemes: [shellPalette].concat(presets)
+
     readonly property var active: customTheme && validatePalette(customColors).valid
-        ? normalized(customColors) : preset(themeName)
+        ? normalized(customColors)
+        : (themeName === "shell" ? shellPalette : preset(themeName))
 
     function palette(key, label, bg, main, caret, sub, subAlt, text, error, errorExtra) {
         return {
@@ -113,6 +129,6 @@ QtObject {
     }
 
     function resetCustomFromPreset() {
-        customColors = normalized(preset(themeName));
+        customColors = normalized(themeName === "shell" ? shellPalette : preset(themeName));
     }
 }

@@ -26,10 +26,16 @@ Scope {
             exclusiveZone: 0
             WlrLayershell.namespace: "quickshell:typingTest"
             WlrLayershell.layer: WlrLayer.Overlay
+            // Exclusive, not OnDemand: Hyprland only gives keyboard focus to an
+            // on-demand layer surface when the pointer enters it, so the test
+            // would ignore typing until you hovered over the panel. Exclusive
+            // grabs the keyboard the moment the overlay maps; closing (esc)
+            // returns it. Pointer clicks still pass through outside the mask.
             WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-            // Match the cheatsheet: the layer surface is transparent and only
-            // the centered rounded panel participates in pointer input.
+            // The layer surface covers the screen but is transparent and masked
+            // to the floating panel, so everything outside the panel — clicks
+            // included — belongs to whatever app is underneath.
             mask: Region {
                 item: typingSurface.panelItem
             }
@@ -54,30 +60,49 @@ Scope {
                 typingSurface.previewResult();
             }
 
+            function openSettings(): void {
+                typingSurface.openSettings();
+            }
+
+            function openHistory(): void {
+                typingSurface.openHistory();
+            }
+
             function status(): string {
                 return typingSurface.diagnosticStatus();
             }
 
-            Component.onCompleted: {
-                if (visible) {
+            // Only joins the shared focus grab when the user asked for
+            // click-outside-to-close; the grab is what closes sidebars.
+            readonly property bool dismissOnClickOutside: typingSurface.settings.closeOnClickOutside
+
+            function updateGrab(): void {
+                if (visible && dismissOnClickOutside)
                     GlobalFocusGrab.addDismissable(typingWindow);
+                else
+                    GlobalFocusGrab.removeDismissable(typingWindow);
+            }
+
+            Component.onCompleted: {
+                updateGrab();
+                if (visible)
                     typingSurface.opened();
-                }
             }
             Component.onDestruction: GlobalFocusGrab.removeDismissable(typingWindow)
 
             onVisibleChanged: {
-                if (visible) {
-                    GlobalFocusGrab.addDismissable(typingWindow);
+                updateGrab();
+                if (visible)
                     typingSurface.opened();
-                } else {
-                    GlobalFocusGrab.removeDismissable(typingWindow);
-                }
             }
+            onDismissOnClickOutsideChanged: updateGrab()
 
             Connections {
                 target: GlobalFocusGrab
-                function onDismissed(): void { typingWindow.hide(); }
+                function onDismissed(): void {
+                    if (typingWindow.dismissOnClickOutside)
+                        typingWindow.hide();
+                }
             }
 
             TypingTestSurface {
@@ -102,6 +127,16 @@ Scope {
             GlobalStates.typingTestOpen = true;
             if (typingTestLoader.item)
                 typingTestLoader.item.previewResult();
+        }
+        function settings(): void {
+            GlobalStates.typingTestOpen = true;
+            if (typingTestLoader.item)
+                typingTestLoader.item.openSettings();
+        }
+        function history(): void {
+            GlobalStates.typingTestOpen = true;
+            if (typingTestLoader.item)
+                typingTestLoader.item.openHistory();
         }
         function status(): string {
             return typingTestLoader.item ? typingTestLoader.item.status() : "{\"loaded\":false}";

@@ -129,7 +129,7 @@ Item {
             StyledText { text: metric.label; color: root.theme.sub; font.pixelSize: 10; font.family: Appearance.font.family.monospace; Layout.alignment: Qt.AlignHCenter }
         }
     }
-    component LegendButton: RippleButton { id: legend; required property string label; property bool active: false; implicitWidth: legendText.implicitWidth + 20; implicitHeight: 30; buttonRadius: 8; toggled: active; focusPolicy: Qt.NoFocus; contentItem: StyledText { id: legendText; text: legend.label; color: legend.active ? "#000000" : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 } }
+    component LegendButton: RippleButton { id: legend; required property string label; property bool active: false; implicitWidth: legendText.implicitWidth + 20; implicitHeight: 30; buttonRadius: 8; toggled: active; focusPolicy: Qt.NoFocus; colBackground: "transparent"; colBackgroundHover: Qt.alpha(root.theme.text, 0.08); colBackgroundToggled: root.theme.main; colBackgroundToggledHover: Qt.lighter(root.theme.main, 1.12); contentItem: StyledText { id: legendText; text: legend.label; color: legend.active ? root.theme.bg : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 } }
     component ActionButton: RippleButton {
         id: action
         required property string label
@@ -140,11 +140,15 @@ Item {
         buttonRadius: 9
         toggled: primary
         focusPolicy: Qt.NoFocus
+        colBackground: "transparent"
+        colBackgroundHover: Qt.alpha(root.theme.text, 0.08)
+        colBackgroundToggled: root.theme.main
+        colBackgroundToggledHover: Qt.lighter(root.theme.main, 1.12)
         contentItem: RowLayout {
             id: actionContent
             spacing: 6
-            MaterialSymbol { text: action.glyph; iconSize: 15; color: action.primary ? "#000000" : root.theme.sub }
-            StyledText { text: action.label; color: action.primary ? "#000000" : root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10 }
+            MaterialSymbol { text: action.glyph; iconSize: 15; color: action.primary ? root.theme.bg : root.theme.sub }
+            StyledText { text: action.label; color: action.primary ? root.theme.bg : root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10 }
         }
     }
 }

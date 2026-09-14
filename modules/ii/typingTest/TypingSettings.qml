@@ -6,7 +6,7 @@ import QtQuick
 QtObject {
     id: root
 
-    property int schemaVersion: 3
+    property int schemaVersion: 5
     property bool restoring: true
     property int writeCount: 0
 
@@ -46,7 +46,7 @@ QtObject {
     property string paceCaret: "off"
     property int paceCaretWpm: 100
     property string paceCaretStyle: "line"
-    property string keyboardMode: "off"
+    property string keyboardMode: "react"
     property real keyboardScale: 1
     property string keyboardLabels: "lowercase"
     property string typedEffect: "keep"
@@ -60,6 +60,13 @@ QtObject {
     property bool showKeyTips: true
     property bool capsLockWarning: true
     property bool focusWarning: true
+    property real panelX: -1
+    property real panelY: -1
+    property real panelWidth: 1040
+    property real panelHeight: 700
+    property bool followShellColors: false
+    property bool closeOnClickOutside: false
+    property real fontScale: 1
 
     signal settingsWritten
 
@@ -90,7 +97,7 @@ QtObject {
         resultSaving = version < 2 ? true : Boolean(saved.resultSaving);
         caretStyle = enumValue(saved.caretStyle, ["off", "line", "block", "outline", "underline"], "underline");
         smoothCaret = enumValue(saved.smoothCaret, ["off", "fast", "medium", "slow"], "medium");
-        keyboardMode = saved.keyboardMode || (saved.showKeyboard ? "react" : "off");
+        keyboardMode = enumValue(saved.keyboardMode, ["off", "static", "react", "next"], "react");
         const storedTheme = saved.themeName || saved.theme || "pure_black";
         themeName = storedTheme === "monkeyBlack" ? "pure_black" : storedTheme;
         quickRestart = saved.quickRestart || "tab";
@@ -125,6 +132,13 @@ QtObject {
         showKeyTips = saved.showKeyTips === undefined ? true : Boolean(saved.showKeyTips);
         capsLockWarning = saved.capsLockWarning === undefined ? true : Boolean(saved.capsLockWarning);
         focusWarning = saved.focusWarning === undefined ? true : Boolean(saved.focusWarning);
+        panelX = numberValue(saved.panelX, -1, -1, 20000);
+        panelY = numberValue(saved.panelY, -1, -1, 20000);
+        panelWidth = numberValue(saved.panelWidth, 1040, 720, 20000);
+        panelHeight = numberValue(saved.panelHeight, 700, 460, 20000);
+        followShellColors = Boolean(saved.followShellColors);
+        closeOnClickOutside = Boolean(saved.closeOnClickOutside);
+        fontScale = numberValue(saved.fontScale, 1, 0.7, 1.8);
     }
 
     function scheduleWrite() {
@@ -151,7 +165,8 @@ QtObject {
             caretStyle, smoothCaret, paceCaret, paceCaretWpm, paceCaretStyle, keyboardMode,
             keyboardScale, keyboardLabels, typedEffect, readAhead, tapeMode, trainer,
             theme: themeName, themeName,
-            customTheme, customThemeJson, panelOpacity, showKeyTips, capsLockWarning, focusWarning
+            customTheme, customThemeJson, panelOpacity, showKeyTips, capsLockWarning, focusWarning,
+            panelX, panelY, panelWidth, panelHeight, followShellColors, closeOnClickOutside, fontScale
         };
     }
 
@@ -180,4 +195,7 @@ QtObject {
     onTrainerChanged: scheduleWrite(); onThemeNameChanged: scheduleWrite(); onCustomThemeChanged: scheduleWrite()
     onCustomThemeJsonChanged: scheduleWrite(); onPanelOpacityChanged: scheduleWrite(); onShowKeyTipsChanged: scheduleWrite()
     onCapsLockWarningChanged: scheduleWrite(); onFocusWarningChanged: scheduleWrite()
+    onPanelXChanged: scheduleWrite(); onPanelYChanged: scheduleWrite(); onPanelWidthChanged: scheduleWrite()
+    onPanelHeightChanged: scheduleWrite(); onFollowShellColorsChanged: scheduleWrite()
+    onCloseOnClickOutsideChanged: scheduleWrite(); onFontScaleChanged: scheduleWrite()
 }

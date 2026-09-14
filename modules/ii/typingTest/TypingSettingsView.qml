@@ -11,12 +11,19 @@ Item {
     required property var settings
     required property var theme
     required property var catalog
+    required property var typingData
     property string searchText: ""
     property string category: "Test"
-    property var categories: ["Test", "Behavior", "Input", "Caret", "Appearance", "Theme", "Keyboard", "Results", "Data"]
+    property var categories: ["Test", "Behavior", "Input", "Caret", "Appearance", "Window", "Theme", "Keyboard", "Results", "Data"]
     signal closeRequested
     signal restartRequested
     signal importPackRequested(string text)
+    signal resetPanelRequested
+    signal reloadPacksRequested
+
+    // Selected pills paint `main`, so their label has to sit on the background
+    // color rather than a hard-coded black.
+    readonly property color onAccent: root.theme.bg
 
     function matches(categoryName, terms) {
         if (root.category !== categoryName) return false;
@@ -33,20 +40,14 @@ Item {
             Item { Layout.fillWidth: true }
             RippleButton { implicitWidth: 38; implicitHeight: 38; buttonRadius: 10; focusPolicy: Qt.NoFocus; onClicked: root.closeRequested(); contentItem: MaterialSymbol { text: "close"; iconSize: 19; color: root.theme.sub; horizontalAlignment: Text.AlignHCenter } }
         }
-        Rectangle {
+        TypingField {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
-            radius: 10
-            color: root.theme.subAlt
-            TextField {
-                anchors.fill: parent
-                anchors.margins: 8
-                text: root.searchText
-                placeholderText: "Search settings"
-                color: root.theme.text
-                font.family: Appearance.font.family.monospace
-                onTextChanged: root.searchText = text
-            }
+            theme: root.theme
+            value: root.searchText
+            placeholder: "search settings"
+            live: true
+            onCommitted: value => root.searchText = value
         }
         Flickable {
             Layout.fillWidth: true
@@ -59,7 +60,7 @@ Item {
                 spacing: 6
                 Repeater {
                     model: root.categories
-                    delegate: RippleButton {
+                    delegate: AccentButton {
                         required property string modelData
                         implicitWidth: categoryLabel.implicitWidth + 24
                         implicitHeight: 36
@@ -67,7 +68,7 @@ Item {
                         buttonRadius: 9
                         focusPolicy: Qt.NoFocus
                         onClicked: root.category = modelData
-                        contentItem: StyledText { id: categoryLabel; text: modelData; color: root.category === modelData ? "#000000" : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 11 }
+                        contentItem: StyledText { id: categoryLabel; text: modelData; color: root.category === modelData ? root.onAccent : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 11 }
                     }
                 }
             }
@@ -86,7 +87,7 @@ Item {
 
                 ChoiceRow { visible: root.matches("Test", "mode time words quote zen custom"); title: "mode"; description: "Timed, fixed word count, quote, free typing, or custom text."; values: ["time", "words", "quote", "zen", "custom"]; current: root.settings.mode; onSelected: value => { root.settings.mode = value; root.restartRequested(); } }
                 NumberRow { visible: root.matches("Test", "duration word count length arbitrary custom"); title: "test length"; description: "Any value from 1 to 10,000."; value: root.settings.testLength; minimum: 1; maximum: 10000; onChanged: value => { root.settings.testLength = value; root.restartRequested(); } }
-                ChoiceRow { visible: root.matches("Test", "language english persian javascript python rust"); title: "language"; description: "Compact local language and code packs."; values: ["english", "english_1k", "english_5k", "persian", "code_javascript", "code_python", "code_rust"]; current: root.settings.language; onSelected: value => { root.settings.language = value; root.restartRequested(); } }
+                ChoiceRow { visible: root.matches("Test", "language english persian javascript python rust 10k misspelled quotes pack"); title: "language"; description: "Built-in packs, shipped JSON packs, and anything in your languages folder."; values: root.typingData.profiles.map(item => item.key); current: root.settings.language; onSelected: value => { root.settings.language = value; root.restartRequested(); } }
                 ToggleRow { visible: root.matches("Test", "punctuation"); title: "punctuation"; description: "Add punctuation and sentence capitalization."; value: root.settings.punctuation; onToggled: { root.settings.punctuation = !root.settings.punctuation; root.restartRequested(); } }
                 ToggleRow { visible: root.matches("Test", "numbers"); title: "numbers"; description: "Mix numeric tokens into generated tests."; value: root.settings.numbers; onToggled: { root.settings.numbers = !root.settings.numbers; root.restartRequested(); } }
                 ChoiceRow { visible: root.matches("Test", "quote length short medium long extra long"); title: "quote length"; description: "Filter the offline quote collection."; values: ["all", "short", "medium", "long", "thicc"]; current: root.settings.quoteLength; onSelected: value => { root.settings.quoteLength = value; root.restartRequested(); } }
@@ -127,10 +128,17 @@ Item {
                 ChoiceRow { visible: root.matches("Appearance", "read ahead"); title: "read ahead"; description: "Focus the current reading window."; values: ["off", "one", "two", "three"]; current: root.settings.readAhead; onSelected: value => root.settings.readAhead = value }
                 ChoiceRow { visible: root.matches("Appearance", "tape letter word"); title: "tape mode"; description: "Center the next letter or word."; values: ["off", "letter", "word"]; current: root.settings.tapeMode; onSelected: value => root.settings.tapeMode = value }
                 NumberRow { visible: root.matches("Appearance", "panel opacity glass tint"); title: "panel opacity"; description: "Pure black/glass tint from 55 to 100 percent."; value: Math.round(root.settings.panelOpacity * 100); minimum: 55; maximum: 100; onChanged: value => root.settings.panelOpacity = value / 100 }
+                NumberRow { visible: root.matches("Appearance", "font size text scale bigger smaller"); title: "font size"; description: "Scales the typing text from 70 to 180 percent of the panel-derived size."; value: Math.round(root.settings.fontScale * 100); minimum: 70; maximum: 180; onChanged: value => root.settings.fontScale = value / 100 }
+                ToggleRow { visible: root.matches("Appearance", "key tips hints bottom shortcuts"); title: "key hints"; description: "Show the restart/backspace/close hints under the test."; value: root.settings.showKeyTips; onToggled: root.settings.showKeyTips = !root.settings.showKeyTips }
+
+                NumberRow { visible: root.matches("Window", "panel width size floating"); title: "panel width"; description: "Width of the floating panel in pixels."; value: Math.round(root.settings.panelWidth); minimum: 720; maximum: 3840; onChanged: value => root.settings.panelWidth = value }
+                NumberRow { visible: root.matches("Window", "panel height size floating"); title: "panel height"; description: "Height of the floating panel in pixels."; value: Math.round(root.settings.panelHeight); minimum: 460; maximum: 2160; onChanged: value => root.settings.panelHeight = value }
+                ToggleRow { visible: root.matches("Window", "close click outside dismiss focus"); title: "close on click outside"; description: "Off keeps the panel open while you click other windows. On closes it like a sidebar."; value: root.settings.closeOnClickOutside; onToggled: root.settings.closeOnClickOutside = !root.settings.closeOnClickOutside }
+                ActionRow { visible: root.matches("Window", "reset position center move drag"); title: "recenter panel"; description: "Drag the strip at the top of the panel to move it; double-click it to recenter."; action: "recenter"; onTriggered: root.resetPanelRequested() }
 
                 TypingThemeEditor { visible: root.category === "Theme"; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight > 0 ? implicitHeight : 600; settings: root.settings; catalog: root.catalog }
 
-                ChoiceRow { visible: root.matches("Keyboard", "keyboard static react next key off"); title: "keyboard mode"; description: "Static layout, pressed-key reaction, or next-key guidance."; values: ["off", "static", "react", "next"]; current: root.settings.keyboardMode; onSelected: value => root.settings.keyboardMode = value }
+                ChoiceRow { visible: root.matches("Keyboard", "keyboard static react next key off"); title: "keyboard mode"; description: "react lights the key you just pressed; next highlights the key you are about to press."; values: ["off", "static", "react", "next"]; current: root.settings.keyboardMode; onSelected: value => root.settings.keyboardMode = value }
                 NumberRow { visible: root.matches("Keyboard", "keyboard scale size"); title: "keyboard scale"; description: "Scale from 50 to 200 percent."; value: Math.round(root.settings.keyboardScale * 100); minimum: 50; maximum: 200; onChanged: value => root.settings.keyboardScale = value / 100 }
                 ChoiceRow { visible: root.matches("Keyboard", "labels uppercase lowercase"); title: "labels"; description: "QWERTY key labels."; values: ["lowercase", "uppercase"]; current: root.settings.keyboardLabels; onSelected: value => root.settings.keyboardLabels = value }
 
@@ -138,9 +146,47 @@ Item {
                 ToggleRow { visible: root.matches("Results", "caps lock warning"); title: "Caps Lock warning"; description: "Warn while Caps Lock is active."; value: root.settings.capsLockWarning; onToggled: root.settings.capsLockWarning = !root.settings.capsLockWarning }
                 ToggleRow { visible: root.matches("Results", "focus loss warning"); title: "focus warning"; description: "Warn if typing focus leaves the input sink."; value: root.settings.focusWarning; onToggled: root.settings.focusWarning = !root.settings.focusWarning }
 
+                ActionRow { visible: root.matches("Data", "reload rescan languages folder packs"); title: "reload language packs"; description: `Rescans ${Directories.typingTestLanguagesUser} for Monkeytype-shaped JSON.`; action: "reload"; onTriggered: root.reloadPacksRequested() }
                 TextRow { id: packJson; visible: root.matches("Data", "import json word quote pack"); title: "import local pack"; description: "Paste a word array, {words:[...]}, or {quotes:[{text,...}]}."; value: ""; multiline: true }
-                RippleButton { visible: root.category === "Data"; Layout.alignment: Qt.AlignRight; implicitWidth: 150; implicitHeight: 40; toggled: true; buttonRadius: 9; focusPolicy: Qt.NoFocus; onClicked: root.importPackRequested(packJson.value); contentItem: StyledText { text: "import pack"; color: "#000000"; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace } }
+                AccentButton { visible: root.category === "Data"; Layout.alignment: Qt.AlignRight; implicitWidth: 150; implicitHeight: 40; toggled: true; buttonRadius: 9; focusPolicy: Qt.NoFocus; onClicked: root.importPackRequested(packJson.value); contentItem: StyledText { text: "import pack"; color: root.onAccent; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace } }
             }
+        }
+    }
+
+    // RippleButton defaults to the shell's Material primary, which has nothing
+    // to do with the typing palette. Everything selectable here routes through
+    // this so the accent follows the chosen theme.
+    component AccentButton: RippleButton {
+        focusPolicy: Qt.NoFocus
+        colBackground: "transparent"
+        colBackgroundHover: Qt.alpha(root.theme.text, 0.08)
+        colBackgroundToggled: root.theme.main
+        colBackgroundToggledHover: Qt.lighter(root.theme.main, 1.12)
+        colRipple: Qt.alpha(root.theme.text, 0.16)
+        colRippleToggled: Qt.alpha(root.theme.bg, 0.2)
+    }
+
+    component ActionRow: RowLayout {
+        id: actionRow
+        required property string title
+        required property string description
+        required property string action
+        signal triggered
+        Layout.fillWidth: true
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            StyledText { text: actionRow.title; color: root.theme.text; font.family: Appearance.font.family.monospace; font.pixelSize: 14 }
+            StyledText { text: actionRow.description; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        }
+        AccentButton {
+            implicitWidth: 110
+            implicitHeight: 34
+            buttonRadius: 9
+            toggled: true
+            focusPolicy: Qt.NoFocus
+            onClicked: actionRow.triggered()
+            contentItem: StyledText { text: actionRow.action; color: root.onAccent; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 11 }
         }
     }
 
@@ -159,7 +205,7 @@ Item {
             Item { Layout.fillWidth: true }
             StyledText { text: choice.description; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10; Layout.maximumWidth: Math.min(430, root.width * 0.48); wrapMode: Text.Wrap; horizontalAlignment: Text.AlignRight }
         }
-        Flow { Layout.fillWidth: true; spacing: 6; Repeater { model: choice.values; delegate: RippleButton { required property string modelData; implicitWidth: optionLabel.implicitWidth + 22; implicitHeight: 32; buttonRadius: 8; toggled: choice.current === modelData; focusPolicy: Qt.NoFocus; onClicked: choice.selected(modelData); contentItem: StyledText { id: optionLabel; text: String(modelData).replace(/_/g, " "); color: choice.current === modelData ? "#000000" : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 } } } }
+        Flow { Layout.fillWidth: true; spacing: 6; Repeater { model: choice.values; delegate: AccentButton { required property string modelData; implicitWidth: optionLabel.implicitWidth + 22; implicitHeight: 32; buttonRadius: 8; toggled: choice.current === modelData; focusPolicy: Qt.NoFocus; onClicked: choice.selected(modelData); contentItem: StyledText { id: optionLabel; text: String(modelData).replace(/_/g, " "); color: choice.current === modelData ? root.onAccent : root.theme.sub; horizontalAlignment: Text.AlignHCenter; font.family: Appearance.font.family.monospace; font.pixelSize: 10 } } } }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.subAlt }
     }
 
@@ -176,7 +222,7 @@ Item {
             StyledText { text: toggle.title; color: root.theme.text; font.family: Appearance.font.family.monospace; font.pixelSize: 14 }
             StyledText { text: toggle.description; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10; wrapMode: Text.Wrap }
         }
-        RippleButton { implicitWidth: 52; implicitHeight: 30; buttonRadius: 15; toggled: toggle.value; focusPolicy: Qt.NoFocus; onClicked: toggle.toggled(); contentItem: MaterialSymbol { text: toggle.value ? "check" : "close"; iconSize: 16; color: toggle.value ? "#000000" : root.theme.sub; horizontalAlignment: Text.AlignHCenter } }
+        AccentButton { implicitWidth: 52; implicitHeight: 30; buttonRadius: 15; toggled: toggle.value; focusPolicy: Qt.NoFocus; onClicked: toggle.toggled(); contentItem: MaterialSymbol { text: toggle.value ? "check" : "close"; iconSize: 16; color: toggle.value ? root.onAccent : root.theme.sub; horizontalAlignment: Text.AlignHCenter } }
     }
 
     component NumberRow: RowLayout {
@@ -194,9 +240,20 @@ Item {
             StyledText { text: number.title; color: root.theme.text; font.family: Appearance.font.family.monospace; font.pixelSize: 14 }
             StyledText { text: number.description; color: root.theme.sub; font.family: Appearance.font.family.monospace; font.pixelSize: 10 }
         }
-        SpinBox { from: number.minimum; to: number.maximum; value: number.value; editable: true; focusPolicy: Qt.StrongFocus; onValueModified: number.changed(value) }
+        TypingField {
+            Layout.preferredWidth: 150
+            theme: root.theme
+            numeric: true
+            steppers: true
+            minimum: number.minimum
+            maximum: number.maximum
+            value: String(number.value)
+            onCommitted: text => {
+                const parsed = Math.round(Number(text));
+                if (isFinite(parsed) && parsed !== number.value) number.changed(parsed);
+            }
+        }
     }
-
     component TextRow: ColumnLayout {
         id: textRow
         required property string title
