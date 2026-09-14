@@ -13,7 +13,7 @@ DockButton {
     property var appToplevel
     property var appListRoot
     property int lastFocused: -1
-    property real iconSize: 33
+    property real iconSize: DockGlow.iconSize
     property real countDotWidth: 10
     property real countDotHeight: 4
     property bool appIsActive: appToplevel.toplevels.find(t => (t.activated == true)) !== undefined
@@ -88,6 +88,18 @@ DockButton {
         active: !isSeparator
         sourceComponent: Item {
             anchors.centerIn: parent
+
+            // Own-colour bloom behind the icon. The loader is wider than the
+            // glyph it holds (anchored left-to-right, height from implicitSize),
+            // so the short side is the real icon size.
+            IconGlow {
+                anchors.centerIn: iconImageLoader
+                z: -1
+                iconSource: Quickshell.iconPath(AppSearch.guessIcon(appToplevel.appId), "image-missing")
+                iconSize: Math.min(iconImageLoader.width, iconImageLoader.height)
+                emphasis: root.appIsActive ? 1.0 : 0.5
+                boosted: root.hovered
+            }
 
             Loader {
                 id: iconImageLoader

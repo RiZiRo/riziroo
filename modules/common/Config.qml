@@ -583,6 +583,17 @@ Singleton {
                 property list<string> pinnedApps: [ // IDs of pinned entries
                     "org.kde.dolphin", "kitty",]
                 property list<string> ignoredAppRegexes: []
+                // Per-app coloured bloom behind each dock icon. The glow is a
+                // blurred copy of the icon itself, so each app glows in its own
+                // colours. See modules/common/widgets/IconGlow.qml.
+                property JsonObject iconGlow: JsonObject {
+                    property bool enable: true
+                    property int strength: 100 // % bloom opacity. >100 also brightens
+                    property int spread: 100 // % halo size
+                    property int saturation: 45 // % extra saturation on the bloom only
+                    property bool pulse: true // Slow staggered breathing
+                    property bool activeOnly: false // Only glow apps with open windows
+                }
             }
 
             property JsonObject interactions: JsonObject {

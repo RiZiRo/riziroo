@@ -495,5 +495,62 @@ ContentPage {
                 }
             }
         }
+
+        ContentSection {
+            icon: "flare"
+            title: Translation.tr("Dock icon glow")
+            shape: MaterialShape.Shape.Cookie6Sided
+            Layout.fillWidth: true
+            visible: Config.options.dock.enable
+
+            GroupedList {
+                ConfigSelectionArray {
+                    Layout.fillWidth: true
+                    icon: "flare"
+                    text: Translation.tr("Preset")
+                    currentValue: DockGlow.currentPreset
+                    onSelected: newValue => { DockGlow.apply(newValue); }
+                    options: [
+                        { displayName: Translation.tr("Off"),       icon: "close",        value: "off" },
+                        { displayName: Translation.tr("Normal"),    icon: "blur_on",      value: "normal" },
+                        { displayName: Translation.tr("Thumbnail"), icon: "photo_camera", value: "thumbnail" }
+                    ]
+                }
+                ConfigSwitch {
+                    Layout.fillWidth: true
+                    visible: Config.options.dock.iconGlow.enable
+                    buttonIcon: "animation"
+                    text: Translation.tr("Breathing pulse")
+                    checked: Config.options.dock.iconGlow.pulse
+                    onCheckedChanged: { Config.options.dock.iconGlow.pulse = checked; }
+                }
+                ConfigSlider {
+                    visible: Config.options.dock.iconGlow.enable
+                    text: Translation.tr("Strength")
+                    value: Config.options.dock.iconGlow.strength
+                    usePercentTooltip: false
+                    buttonIcon: "brightness_high"
+                    from: 0
+                    to: 220
+                    stopIndicatorValues: [100]
+                    onValueChanged: {
+                        Config.options.dock.iconGlow.strength = Math.round(value);
+                    }
+                }
+                ConfigSlider {
+                    visible: Config.options.dock.iconGlow.enable
+                    text: Translation.tr("Halo size")
+                    value: Config.options.dock.iconGlow.spread
+                    usePercentTooltip: false
+                    buttonIcon: "blur_on"
+                    from: 60
+                    to: 200
+                    stopIndicatorValues: [100]
+                    onValueChanged: {
+                        Config.options.dock.iconGlow.spread = Math.round(value);
+                    }
+                }
+            }
+        }
     }
 }

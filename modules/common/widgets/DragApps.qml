@@ -175,13 +175,26 @@ Item {
                 contentItem: Item {
                     anchors.centerIn: parent
 
+                    // Own-colour bloom behind the icon. Sits under the icon but
+                    // over the panel fill, so it tints the glass as well.
+                    IconGlow {
+                        anchors.centerIn: appIcon
+                        z: -1
+                        iconSource: appIcon.source
+                        iconSize: appIcon.width
+                        emphasis: slotItem.appActive ? 1.0
+                            : (slotItem.appEntry?.toplevels?.length ?? 0) > 0 ? 0.5
+                            : 0.0
+                        boosted: dockBtn.hovered
+                    }
+
                     IconImage {
                         id: appIcon
                         anchors.centerIn: parent
                         source: Quickshell.iconPath(
                             AppSearch.guessIcon(slotItem.appId),
                             "image-missing")
-                        implicitSize: 33
+                        implicitSize: DockGlow.iconSize
                     }
 
                     Loader {

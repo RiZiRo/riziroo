@@ -22,6 +22,31 @@ Scope {
     // through the panel.
     property real dockTransparency: 0.94 // 0 = solid panel, 1 = fully see-through
 
+    // Extra transparent window height above the panel, so the icon bloom can
+    // finish inside the layer surface instead of being cut off square at its
+    // edge — a hard-edged remnant looks like the panel itself grew taller,
+    // because the compositor blurs the wallpaper behind everything above
+    // `ignore_alpha`. Derived from the bloom's own geometry (see DockGlow), so
+    // it always tracks the halo size. The panel does not move: the window is
+    // bottom anchored, so it grows upwards and its contents shift down by the
+    // same amount. Excluded from the exclusive zone and the input mask, so it
+    // neither reserves screen space nor eats clicks.
+    readonly property real glowSpill: DockGlow.requiredSpill
+
+    // Glow presets, for switching into screenshot/recording look without
+    // digging through settings:
+    //   qs -c end4-pC ipc call dock glow thumbnail
+    IpcHandler {
+        target: "dock"
+
+        function glow(preset: string): string {
+            const name = (preset === "on") ? "normal" : preset;
+            if (!DockGlow.apply(name))
+                return "usage: dock glow off|normal|thumbnail";
+            return `icon glow: ${DockGlow.currentPreset}`;
+        }
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -47,6 +72,7 @@ Scope {
             exclusiveZone: (root.pinned && !fullscreenOnThisMonitor)
                 ? implicitHeight - Appearance.sizes.hyprlandGapsOut
                   - (Appearance.sizes.elevationMargin - Appearance.sizes.hyprlandGapsOut)
+                  - root.glowSpill
                 : 0
 
             anchors { bottom: true; left: true; right: true }
@@ -57,16 +83,19 @@ Scope {
             implicitHeight: (Config.options?.dock.height ?? 70)
                 + Appearance.sizes.elevationMargin
                 + Appearance.sizes.hyprlandGapsOut
+                + root.glowSpill
 
             mask: Region { item: dockMouseArea }
 
             MouseArea {
                 id: dockMouseArea
-                height: parent.height
+                // Leave the glow headroom outside the interactive area: the
+                // mask follows this item, so the spill band stays click-through.
+                height: parent.height - root.glowSpill
                 anchors {
                     top: parent.top
                     topMargin: dockRoot.reveal
-                        ? 0
+                        ? root.glowSpill
                         : Config.options?.dock.hoverToReveal
                             ? (dockRoot.implicitHeight - Config.options.dock.hoverRegionHeight)
                             : (dockRoot.implicitHeight + 1)
