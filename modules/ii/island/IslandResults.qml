@@ -27,6 +27,12 @@ Rectangle {
     readonly property int rowLimit: Config.options.bar.island.maxResults
     readonly property string strippedQuery: StringUtils.cleanOnePrefix(LauncherSearch.query, IslandState.knownPrefixes)
     readonly property bool isAiMode: IslandState.searchMode === "ai"
+    readonly property bool isFilesMode: IslandState.searchMode === "files"
+    readonly property real fileStatusHeight: root.isFilesMode ? 38 : 0
+    readonly property string fileStatus: FileSearch.error.length > 0 ? FileSearch.error
+        : FileSearch.searching ? Translation.tr("Searching filenames…")
+        : FileSearch.message.length > 0 ? FileSearch.message
+        : Translation.tr("System index + live personal folders · Names and paths only")
 
     // Derived from the fixed panel width, never from a view's own geometry -- sizing the card from
     // contentHeight while the view is sized by the card is a binding loop.
@@ -36,12 +42,12 @@ Rectangle {
     implicitWidth: Config.options.bar.island.panelWidth
     implicitHeight: {
         if (root.isAiMode)
-            return Math.min(380, aiScroll.contentHeight + 32);
+            return aiPanel.implicitHeight + 32;
         if (IslandState.resultCount === 0)
-            return 56;
+            return root.isFilesMode ? 154 : 56;
         if (IslandState.gridMode)
             return Math.min(376, root.gridRows * IslandState.gridCellSize + 16 + root.captionHeight + 4);
-        return Math.min(520, listView.contentHeight + 16);
+        return Math.min(520, listView.contentHeight + 16 + root.fileStatusHeight);
     }
 
     radius: Appearance.rounding.normal
@@ -62,6 +68,7 @@ Rectangle {
         id: listView
         anchors.fill: parent
         anchors.margins: 8
+        anchors.bottomMargin: 8 + root.fileStatusHeight
         spacing: 2
         clip: true
         visible: !IslandState.gridMode && !root.isAiMode && IslandState.resultCount > 0
@@ -88,71 +95,11 @@ Rectangle {
         }
     }
 
-    // AI answer view: full wrapped text instead of a single truncated row,
-    // so the answer reads right here in the results card.
-    Flickable {
-        id: aiScroll
+    IslandAiPanel {
+        id: aiPanel
         anchors.fill: parent
-        anchors.margins: 8
-        clip: true
+        anchors.margins: 16
         visible: root.isAiMode
-        contentWidth: width
-        contentHeight: aiColumn.implicitHeight
-        flickableDirection: Flickable.VerticalFlick
-        boundsBehavior: Flickable.StopAtBounds
-
-        readonly property string aiBody: {
-            if (root.strippedQuery.length === 0)
-                return Translation.tr("Type a question for %1").arg(IslandAiService.modelName);
-            if (IslandAiService.status === "loading" || IslandAiService.status === "idle")
-                return Translation.tr("Thinking with %1...").arg(IslandAiService.modelName);
-            if (IslandAiService.status === "nokey")
-                return Translation.tr("No API key for %1 — type /key in the sidebar").arg(IslandAiService.modelName);
-            if (IslandAiService.status === "failed")
-                return IslandAiService.result.length > 0 ? IslandAiService.result : Translation.tr("Couldn't get an answer");
-            return IslandAiService.result;
-        }
-
-        Column {
-            id: aiColumn
-            width: aiScroll.width
-            spacing: 6
-
-            Row {
-                spacing: 8
-                width: parent.width
-                MaterialSymbol {
-                    text: "smart_toy"
-                    iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.colors.colPrimary
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                StyledText {
-                    text: IslandAiService.modelName
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colSubtext
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-            }
-
-            StyledText {
-                width: parent.width
-                text: aiScroll.aiBody
-                font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colOnSurface
-                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                textFormat: Text.PlainText
-            }
-
-            StyledText {
-                width: parent.width
-                visible: IslandAiService.status === "ok"
-                text: Translation.tr("Enter: copy • Open in sidebar via → button")
-                font.pixelSize: Appearance.font.pixelSize.smaller
-                color: Appearance.colors.colSubtext
-                wrapMode: Text.Wrap
-            }
-        }
     }
 
     // Emoji grid. Same LauncherSearch results the list renders, drawn as glyphs.
@@ -246,7 +193,7 @@ Rectangle {
     // Flickable fallback had almost nothing to travel over.
     StyledText {
         anchors.centerIn: parent
-        visible: IslandState.resultCount === 0 && !root.isAiMode
+        visible: IslandState.resultCount === 0 && !root.isAiMode && !root.isFilesMode
         text: LauncherSearch.query.length === 0
             ? Translation.tr("Type to search")
             : Translation.tr("No results")
@@ -254,10 +201,61 @@ Rectangle {
         color: Appearance.colors.colSubtext
     }
 
+    Column {
+        anchors.centerIn: parent
+        width: parent.width - 32
+        spacing: 8
+        visible: root.isFilesMode && IslandState.resultCount === 0
+        StyledText {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: FileSearch.query.length === 0 ? Translation.tr("Find files and folders")
+                : FileSearch.searching ? Translation.tr("Searching…")
+                : FileSearch.error.length > 0 ? FileSearch.error
+                : FileSearch.partial ? Translation.tr("No matches in the searched locations")
+                : Translation.tr("No matching files")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: Appearance.font.pixelSize.small
+        }
+        StyledText {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: 'report ext:pdf   ·   type:folder   ·   *.png\nin:"~/Documents"   ·   in:"/etc"'
+            textFormat: Text.PlainText
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+        }
+        StyledText {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: FileSearch.message.length > 0 ? FileSearch.message
+                : Translation.tr("System index is refreshed daily. Use in: for a live folder search.")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+        }
+    }
+
+    StyledText {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 10
+        height: root.fileStatusHeight - 6
+        visible: root.isFilesMode && IslandState.resultCount > 0
+        text: root.fileStatus
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: Appearance.font.pixelSize.smaller
+        color: Appearance.colors.colSubtext
+    }
+
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.NoButton
-        enabled: IslandState.resultCount > 0
+        enabled: !root.isAiMode && IslandState.resultCount > 0
         onWheel: wheel => {
             const view = IslandState.gridMode ? gridView : listView;
             const scrolling = Config.options.interactions.scrolling;

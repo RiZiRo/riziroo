@@ -23,10 +23,8 @@ import Quickshell.Wayland
 Singleton {
     id: root
 
-    // The island's surface is drawn inside the bar window and takes exclusive keyboard focus, so it
-    // must not be left expanded when that window goes away -- it would come back still open, still
-    // holding focus. bar.vertical has no island at all (VerticalBar loads instead of Bar), so it
-    // is treated as disabled rather than half-working.
+    // The bar host can now be loaded just for an explicitly opened island even
+    // when the regular bars are hidden. VerticalBar has no island host.
     readonly property bool enabled: Config.options.bar.island.enable
         && !Config.options.bar.vertical
         && (Config.options.bar.layouts?.middleLayout ?? []).includes("dynamicIsland")
@@ -63,8 +61,8 @@ Singleton {
             root.close();
     }
 
-    // "overview" | "focus" | "media"
-    property string dashboardTab: "overview"
+    // "focus" | "overview" | "media"
+    property string dashboardTab: "focus"
 
     /**
      * What the collapsed pill is currently showing. Derived, never assigned: an OSD burst wins
@@ -90,12 +88,13 @@ Singleton {
     ////////////////////////// Search modes //////////////////////////
     // "all" carries no prefix, so it behaves exactly like the overview search does today:
     // apps, settings pages and actions, with math/command/web offered as fallbacks.
-    readonly property list<string> searchModes: ["all", "apps", "clipboard", "emoji", "symbols", "ai", "keybinds", "translate"]
+    readonly property list<string> searchModes: ["all", "apps", "files", "clipboard", "emoji", "symbols", "ai", "keybinds", "translate"]
 
     function prefixFor(mode: string): string {
         const p = Config.options.search.prefix;
         switch (mode) {
         case "apps":      return p.app;
+        case "files":     return p.files ?? "f ";
         case "clipboard": return p.clipboard;
         case "emoji":     return p.emojis;
         case "symbols":   return p.symbols;
@@ -110,13 +109,14 @@ Singleton {
     // stripped whole rather than leaving a fragment behind.
     readonly property list<string> knownPrefixes: {
         const p = Config.options.search.prefix;
-        return [p.action, p.app, p.clipboard, p.emojis, p.keybinds ?? "<", p.ai ?? ".", p.symbols, p.math, p.shellCommand, p.webSearch, p.translate ?? "tr "].filter(prefix => (prefix?.length ?? 0) > 0).sort((a, b) => b.length - a.length);
+        return [p.action, p.app, p.files ?? "f ", p.clipboard, p.emojis, p.keybinds ?? "<", p.ai ?? ".", p.symbols, p.math, p.shellCommand, p.webSearch, p.translate ?? "tr "].filter(prefix => (prefix?.length ?? 0) > 0).sort((a, b) => b.length - a.length);
     }
 
     readonly property string searchMode: {
         const q = LauncherSearch.query;
         const p = Config.options.search.prefix;
-        // Longest first: "tr " has to be tested before the single-character prefixes.
+        // Multi-character prefixes before single-character prefixes.
+        if (q.startsWith(p.files ?? "f ") || q === (p.files ?? "f ").trim()) return "files";
         if (q.startsWith(p.translate ?? "tr ")) return "translate";
         if (q.startsWith(p.clipboard))        return "clipboard";
         if (q.startsWith(p.emojis))           return "emoji";
@@ -134,6 +134,8 @@ Singleton {
         if (!root.searchModes.includes(mode))
             mode = "all";
         let rest = LauncherSearch.query;
+        if (rest === root.prefixFor("files").trim())
+            rest = "";
         for (const prefix of root.knownPrefixes) {
             if (rest.startsWith(prefix)) {
                 rest = rest.slice(prefix.length);
@@ -294,7 +296,25 @@ Singleton {
 
     // Every keystroke rebuilds the list, so the selection goes back to the top -- same as the
     // overview search's focusFirstItem().
-    onSearchResultsChanged: root.selectedIndex = 0
+    property string selectedFilePath: ""
+    onSelectedIndexChanged: {
+        if (root.searchMode === "files")
+            root.selectedFilePath = root.selectedResult?.rawValue ?? "";
+    }
+    onSearchResultsChanged: {
+        const previous = root.selectedFilePath;
+        const index = root.searchMode === "files"
+            ? root.searchResults.findIndex(entry => entry.rawValue === previous) : -1;
+        root.selectedIndex = index >= 0 ? index : 0;
+        root.selectedFilePath = root.searchMode === "files" ? (root.selectedResult?.rawValue ?? "") : "";
+    }
+    Connections {
+        target: LauncherSearch
+        function onQueryChanged() {
+            root.selectedFilePath = "";
+            root.selectedIndex = 0;
+        }
+    }
 
     function moveSelection(delta: int): void {
         if (root.resultCount === 0)
@@ -307,6 +327,13 @@ Singleton {
     }
 
     function activateAt(index: int): void {
+        if (root.searchMode === "ai") {
+            if (IslandAiService.status === "ok")
+                Quickshell.clipboardText = IslandAiService.result;
+            else if (IslandAiService.status !== "loading")
+                IslandAiService.submit();
+            return;
+        }
         const entry = root.searchResults[index];
         if (!entry)
             return;
@@ -339,7 +366,7 @@ Singleton {
     // decides whether toggle() switches sub-mode or closes.
 
     function open(newMode, arg) {
-        if (!root.enabled)
+        if (!root.enabled || GlobalStates.screenLocked)
             return;
         // The island and the overview search are two front-ends over the same LauncherSearch
         // query, so they must never be up together.
@@ -387,14 +414,9 @@ Singleton {
 
     Connections {
         target: GlobalStates
-        // Both of these tear down the window the surface is drawn in. Without collapsing here the
-        // island would reappear expanded and still holding exclusive keyboard focus.
+        // Locking must dismiss the island; hiding the bars no longer destroys its host.
         function onScreenLockedChanged() {
             if (GlobalStates.screenLocked && root.expanded)
-                root.close();
-        }
-        function onBarOpenChanged() {
-            if (!GlobalStates.barOpen && root.expanded)
                 root.close();
         }
         function onOverviewOpenChanged() {
@@ -434,6 +456,20 @@ Singleton {
         }
         function search(mode: string): void {
             root.toggle("search", mode.length > 0 ? mode : undefined);
+        }
+        function files(): void {
+            root.toggle("search", "files");
+        }
+        // Read-only diagnostics for checking focus/lifetime without changing state.
+        function status(): string {
+            return JSON.stringify({mode: root.mode, searchMode: root.searchMode,
+                barOpen: GlobalStates.barOpen, overviewOpen: GlobalStates.overviewOpen,
+                locked: GlobalStates.screenLocked, selectedIndex: root.selectedIndex,
+                query: LauncherSearch.query, resultCount: root.resultCount,
+                selectedPath: root.searchMode === "files" ? (root.selectedResult?.rawValue ?? "") : "",
+                fileSearching: FileSearch.searching, fileError: FileSearch.error,
+                filePartial: FileSearch.partial, aiStatus: IslandAiService.status,
+                aiError: IslandAiService.error, aiModel: IslandAiService.modelName});
         }
         function clipboard(): void {
             root.toggle("search", "clipboard");

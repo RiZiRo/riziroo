@@ -796,6 +796,7 @@ Singleton {
                     property bool showDefaultActionsWithoutPrefix: true
                     property string action: "/"
                     property string app: ">"
+                    property string files: "f "
                     property string clipboard: ";"
                     property string emojis: ":"
                     property string keybinds: "<"

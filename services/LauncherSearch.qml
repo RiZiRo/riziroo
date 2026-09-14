@@ -17,8 +17,9 @@ Singleton {
     property string query: ""
 
     function ensurePrefix(prefix) {
-        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.ai ?? ".", Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].some(i => root.query.startsWith(i))) {
-            root.query = prefix + root.query.slice(1);
+        const currentPrefix = [Config.options.search.prefix.files ?? "f ", Config.options.search.prefix.translate ?? "tr ", Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.ai ?? ".", Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].filter(p => p?.length > 0).sort((a, b) => b.length - a.length).find(p => root.query.startsWith(p));
+        if (currentPrefix) {
+            root.query = prefix + root.query.slice(currentPrefix.length);
         } else {
             root.query = prefix + root.query;
         }
@@ -266,7 +267,9 @@ Singleton {
             return [];
 
         ///////////// Special cases ///////////////
-        if (root.query.startsWith(Config.options.search.prefix.translate)) {
+        if (root.query.startsWith(Config.options.search.prefix.files ?? "f ") || root.query === (Config.options.search.prefix.files ?? "f ").trim()) {
+            return FileSearch.results;
+        } else if (root.query.startsWith(Config.options.search.prefix.translate)) {
             // translate-shell is driven by services/TranslateService.qml, which watches this query itself.
             // Named ...Service because QtQuick already exports a `Translate` transform type, and it
             // wins name resolution -- `Translate.status` silently read undefined off it.
@@ -391,12 +394,16 @@ Singleton {
             }
             if (aiStatus === "loading" || aiStatus === "idle") {
                 return [resultComp.createObject(null, {
-                    name: Translation.tr("Thinking with %1...").arg(aiModelName),
+                    name: aiStatus === "loading" ? Translation.tr("Thinking with %1...").arg(aiModelName)
+                        : Translation.tr("Press Enter to ask %1").arg(aiModelName),
                     verb: "",
                     type: Translation.tr("AI"),
                     iconName: "smart_toy",
                     iconType: LauncherSearchResult.IconType.Material,
-                    execute: () => {}
+                    execute: () => {
+                        if (IslandAiService.status !== "loading")
+                            IslandAiService.submit();
+                    }
                 })].filter(Boolean);
             }
             if (aiStatus === "nokey") {
@@ -406,13 +413,11 @@ Singleton {
                     type: Translation.tr("AI"),
                     iconName: "key",
                     iconType: LauncherSearchResult.IconType.Material,
-                    execute: () => {
-                        GlobalStates.sidebarLeftOpen = true;
-                    }
+                    execute: () => IslandAiService.openSidebar()
                 })].filter(Boolean);
             }
             if (aiStatus === "failed") {
-                const msg = IslandAiService.result.length > 0 ? IslandAiService.result : Translation.tr("Couldn't get an answer");
+                const msg = IslandAiService.error.length > 0 ? IslandAiService.error : Translation.tr("Couldn't get an answer");
                 return [resultComp.createObject(null, {
                     name: msg,
                     verb: Translation.tr("Retry"),
@@ -420,7 +425,7 @@ Singleton {
                     iconName: "error",
                     iconType: LauncherSearchResult.IconType.Material,
                     execute: () => {
-                        Quickshell.clipboardText = searchString;
+                        IslandAiService.submit();
                     }
                 })].filter(Boolean);
             }
@@ -447,11 +452,7 @@ Singleton {
                         iconName: "open_in_new",
                         iconType: LauncherSearchResult.IconType.Material,
                         execute: () => {
-                            const q = StringUtils.cleanPrefix(LauncherSearch.query, Config.options.search.prefix.ai ?? ".").trim();
-                            GlobalStates.sidebarLeftOpen = true;
-                            Qt.callLater(() => {
-                                Ai.sendUserMessage(q);
-                            });
+                            IslandAiService.openSidebar();
                         }
                     })]
             })].filter(Boolean);
